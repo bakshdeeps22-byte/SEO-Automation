@@ -20,7 +20,18 @@ Once connected, your AI assistant can:
 
 ## ⚡ Quick Setup for AI Clients
 
-### 1. Claude Desktop (macOS)
+### 1. Claude.ai Web (Custom Connector)
+Connect Claude directly without running local commands:
+1. Open [Claude.ai](https://claude.ai) → **Settings** → **Connectors** (or **Developer**).
+2. Click **Add Custom Connector**.
+3. Set **Name**: `SEO Automation`.
+4. Set **Server URL**: `https://seo-automation-u8f8.onrender.com/mcp` *(or `https://seo-automation-u8f8.onrender.com/sse`)*.
+5. Set **Authentication**: **No sign-in**.
+6. Save and enable the connector in your chat!
+
+---
+
+### 2. Claude Desktop (macOS)
 1. Open Claude Desktop configuration file:
    ```bash
    code ~/Library/Application\ Support/Claude/claude_desktop_config.json

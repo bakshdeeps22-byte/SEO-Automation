@@ -28,11 +28,13 @@ No local code or command line required! Any team member with a Claude Pro/Team a
 3. Click **Add Custom Connector** (or **Add Tool**).
 4. Fill in the connection modal:
    - **Name**: `SEO Automation`
-   - **Server URL**: `https://<YOUR_TUNNEL_URL>/mcp`  
-     *(e.g., `https://cleaners-touring-hearing-sara.trycloudflare.com/mcp`)*
-   - **Authentication**: Select **No sign-in** (or Bearer Token if configured).
+   - **Production Server URL**: `https://seo-automation-u8f8.onrender.com/mcp`  
+     *(Alternative SSE URL if required: `https://seo-automation-u8f8.onrender.com/sse`)*
+   - **Authentication**: Select **No sign-in**
 5. Click **Add** / **Save**.
 6. Open any new chat in Claude.ai and ensure the **SEO Automation** connector toggle is turned ON.
+
+> 💡 **Render Deployment Note**: Render automatically deploys new commits from `main`. If you just pushed changes, ensure the latest deploy is marked **Live** in your [Render Dashboard](https://dashboard.render.com). If needed, click **Manual Deploy** → **Deploy latest commit**. For local offline testing, you can also use your local Cloudflare tunnel URL (`https://cleaners-touring-hearing-sara.trycloudflare.com/mcp`).
 
 ---
 
