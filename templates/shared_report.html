@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ shared.title }} — NuroSparx SEO Report</title>
+  <meta name="description" content="SEO Performance Report — {{ job_name }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="shared-page">
+    <!-- Header -->
+    <div class="shared-header flex items-center justify-between" style="flex-wrap:wrap;gap:16px;">
+      <div>
+        <div style="font-size:13px;opacity:0.8;margin-bottom:8px;">NuroSparx SEO Automation Report</div>
+        <h1>{{ shared.title }}</h1>
+        <p>Generated on {{ job_run.run_date.strftime('%B %d, %Y at %I:%M %p') }}
+          {% if job_run.triggered_by == 'scheduled' %} · Automated run{% endif %}
+        </p>
+      </div>
+      <div>
+        <a href="{{ url_for('export_shared', token=shared.share_token) }}" class="btn btn-secondary" style="color:var(--primary);background:#fff;border:none;box-shadow:var(--shadow-md);">
+          📥 Download Report (.xlsx)
+        </a>
+      </div>
+    </div>
+
+    <div class="shared-content">
+      {% if data %}
+
+      <!-- Summary Stats -->
+      {% if shared.job_number == 1 %}
+      <div class="stats-grid" style="margin-top:24px;">
+        <div class="stat-card">
+          <div class="stat-card-icon red">🔴</div>
+          <div class="stat-card-value">{{ data.severity_counts.Critical }}</div>
+          <div class="stat-card-label">Critical Issues</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon amber">🟡</div>
+          <div class="stat-card-value">{{ data.severity_counts.High }}</div>
+          <div class="stat-card-label">High Priority</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon blue">📋</div>
+          <div class="stat-card-value">{{ data.total_issues }}</div>
+          <div class="stat-card-label">Total Issues</div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header"><span class="card-title">Issues Found</span></div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr><th>URL</th><th>Issue</th><th>Severity</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+              {% for issue in data.issues %}
+              <tr>
+                <td class="td-url">{{ issue.url|replace('https://www.meridianpet.com', '')|truncate(50) }}</td>
+                <td>{{ issue.issue }}</td>
+                <td><span class="badge badge-{{ issue.severity|lower }}">{{ issue.severity }}</span></td>
+                <td style="font-size:12px;max-width:250px;">{{ issue.recommended_action[:80] if issue.recommended_action else '' }}…</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% elif shared.job_number == 2 %}
+      <div class="stats-grid" style="margin-top:24px;">
+        <div class="stat-card">
+          <div class="stat-card-value">{{ data.alert_counts.HIGH }}</div>
+          <div class="stat-card-label">High Alerts</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">{{ data.alert_counts.MEDIUM }}</div>
+          <div class="stat-card-label">Medium Alerts</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">{{ data.total_queries }}</div>
+          <div class="stat-card-label">Queries Analyzed</div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header"><span class="card-title">Ranking Anomalies</span></div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr><th>Query</th><th>Alert</th><th>Click Δ%</th><th>Pos Δ</th><th>Reason</th></tr>
+            </thead>
+            <tbody>
+              {% for a in data.anomalies|sort(attribute='clicks_change_pct') %}
+              <tr>
+                <td style="font-weight:500;">{{ a.query }}</td>
+                <td><span class="badge badge-{{ a.alert_level|lower }}">{{ a.alert_level }}</span></td>
+                <td style="color:{{ 'var(--danger)' if a.clicks_change_pct < -10 else 'var(--text-secondary)' }};font-weight:600;">{{ "%.1f"|format(a.clicks_change_pct) }}%</td>
+                <td>{{ "+%.1f"|format(a.position_change) if a.position_change > 0 else "%.1f"|format(a.position_change) }}</td>
+                <td style="font-size:12px;max-width:250px;">{{ a.alert_reason[:80] }}…</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% elif shared.job_number == 3 %}
+      <div class="stats-grid" style="margin-top:24px;">
+        <div class="stat-card">
+          <div class="stat-card-value">{{ data.total_issues }}</div>
+          <div class="stat-card-label">Total Issues</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">{{ data.status_counts.pending }}</div>
+          <div class="stat-card-label">Pending Review</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">{{ data.status_counts.approved }}</div>
+          <div class="stat-card-label">Approved</div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header"><span class="card-title">Product QA Issues</span></div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr><th>Product</th><th>Issue</th><th>Status</th><th>Current</th><th>Suggested</th></tr>
+            </thead>
+            <tbody>
+              {% for issue in data.issues %}
+              <tr>
+                <td style="font-weight:500;">{{ issue.product_name }}</td>
+                <td>{{ issue.issue_type }}</td>
+                <td><span class="badge badge-{{ issue.status }}">{{ issue.status }}</span></td>
+                <td style="font-size:12px;max-width:200px;">{{ issue.current_value[:60] }}…</td>
+                <td style="font-size:12px;max-width:200px;">{{ issue.suggested_value[:60] }}…</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% elif shared.job_number == 4 %}
+      <div class="stats-grid" style="margin-top:24px;">
+        <div class="stat-card">
+          <div class="stat-card-value">{{ data.result_counts.PASS }}</div>
+          <div class="stat-card-label">Passing</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">{{ data.result_counts.CRITICAL }}</div>
+          <div class="stat-card-label">Critical</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">{{ data.pass_rate }}%</div>
+          <div class="stat-card-label">Pass Rate</div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header"><span class="card-title">Redirect Check Results</span></div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr><th>Old URL</th><th>Status</th><th>Hops</th><th>Result</th><th>Reason</th></tr>
+            </thead>
+            <tbody>
+              {% for c in data.checks %}
+              <tr>
+                <td class="td-url">{{ c.old_url|replace('https://shop.meridianpet.com', '')|truncate(45) }}</td>
+                <td>{{ c.actual_status }}</td>
+                <td>{{ c.redirect_hops }}</td>
+                <td><span class="badge badge-{{ c.pass_fail|lower }}">{{ c.pass_fail }}</span></td>
+                <td style="font-size:12px;max-width:250px;">{{ c.failure_reason[:80] }}…</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {% else %}
+      <div class="empty-state" style="margin-top:40px;">
+        <div class="empty-state-title">Report data not available</div>
+      </div>
+      {% endif %}
+
+      <div style="text-align:center;margin-top:40px;padding:20px;color:var(--text-tertiary);font-size:13px;">
+        Generated by NuroSparx SEO Automation · Report ID: {{ shared.share_token[:8] }}
+      </div>
+    </div>
+  </div>
+</body>
+</html>

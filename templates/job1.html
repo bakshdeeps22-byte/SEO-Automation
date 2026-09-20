@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Technical SEO Crawl Monitor{% endblock %}
+{% block page_title %}🔍 Technical SEO Crawl Monitor{% endblock %}
+{% block page_subtitle %}Job 1 — Weekly technical health checks{% endblock %}
+
+{% block header_actions %}
+<div class="flex items-center gap-2">
+  <form method="POST" action="{{ url_for('run_job', job_num=1) }}" data-loading="true" style="display:inline;">
+    <button type="submit" class="btn btn-primary btn-sm">▶ Run Now</button>
+  </form>
+  {% if summary %}
+  <a href="{{ url_for('export_job1', run_id=summary.run_id) }}" class="btn btn-secondary btn-sm" title="Download Crawl Issues spreadsheet">
+    📥 Download Report (.xlsx)
+  </a>
+  <form method="POST" action="{{ url_for('share_report', job_num=1, run_id=summary.run_id) }}" style="display:inline;">
+    <button type="submit" class="btn btn-ghost btn-sm">🔗 Share</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+{% if summary %}
+
+<!-- Summary Pills -->
+<div class="summary-bar">
+  <div class="summary-pill">
+    <span class="summary-pill-dot critical"></span>
+    {{ summary.severity_counts.Critical }} Critical
+  </div>
+  <div class="summary-pill">
+    <span class="summary-pill-dot high"></span>
+    {{ summary.severity_counts.High }} High
+  </div>
+  <div class="summary-pill">
+    <span class="summary-pill-dot medium"></span>
+    {{ summary.severity_counts.Medium }} Medium
+  </div>
+  <div class="summary-pill">
+    <span class="summary-pill-dot low"></span>
+    {{ summary.severity_counts.Low }} Low
+  </div>
+  <div class="summary-pill" style="margin-left:auto;background:var(--bg-tertiary);">
+    Total: <strong>{{ summary.total_issues }}</strong> issues
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="charts-grid">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Severity Distribution</span>
+    </div>
+    <div class="chart-container" style="height:280px;">
+      <canvas id="severity-chart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Issues by Type</span>
+    </div>
+    <div class="chart-container" style="height:280px;">
+      <canvas id="issue-types-chart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Filter -->
+<div class="filter-bar">
+  <span style="font-size:13px;font-weight:600;color:var(--text-secondary);">Filter:</span>
+  <span class="filter-chip active" data-filter="all">All</span>
+  <span class="filter-chip" data-filter="Critical">Critical</span>
+  <span class="filter-chip" data-filter="High">High</span>
+  <span class="filter-chip" data-filter="Medium">Medium</span>
+</div>
+
+<!-- Issues Table -->
+<div class="card">
+  <div class="table-container">
+    <table class="filterable-table">
+      <thead>
+        <tr>
+          <th data-sort>URL</th>
+          <th data-sort>Issue</th>
+          <th data-sort>Severity</th>
+          <th data-sort>Priority</th>
+          <th>Why It Matters</th>
+          <th>Recommended Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in summary.issues %}
+        <tr data-filter-value="{{ issue.severity }}">
+          <td class="td-url" title="{{ issue.url }}">{{ issue.url|replace('https://www.meridianpet.com', '') or '/' }}</td>
+          <td>{{ issue.issue }}</td>
+          <td><span class="badge badge-{{ issue.severity|lower }}">{{ issue.severity }}</span></td>
+          <td>{{ issue.priority_score }}</td>
+          <td style="max-width:250px;font-size:12px;color:var(--text-secondary);">{{ issue.why_it_matters[:100] }}{% if issue.why_it_matters|length > 100 %}…{% endif %}</td>
+          <td style="max-width:250px;font-size:12px;">{{ issue.recommended_action[:100] }}{% if issue.recommended_action and issue.recommended_action|length > 100 %}…{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Run History -->
+{% if runs|length > 1 %}
+<div class="card mt-6">
+  <div class="card-header">
+    <span class="card-title">Run History</span>
+  </div>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Issues</th>
+          <th>Critical</th>
+          <th>Duration</th>
+          <th>Trigger</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td>{{ run.run_date.strftime('%b %d, %Y %I:%M %p') }}</td>
+          <td>{{ run.issues_found }}</td>
+          <td>{{ run.critical_count }}</td>
+          <td>{{ "%.1f"|format(run.duration_seconds) }}s</td>
+          <td><span class="badge badge-{{ 'pass' if run.triggered_by == 'scheduled' else 'watch' }}">{{ run.triggered_by }}</span></td>
+          <td><a href="{{ url_for('job1_detail', run_id=run.id) }}" class="btn btn-ghost btn-sm">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  <div class="empty-state-icon">🔍</div>
+  <div class="empty-state-title">No crawl data yet</div>
+  <div class="empty-state-text">Run the crawl monitor to analyze your site for technical SEO issues.</div>
+  <form method="POST" action="{{ url_for('run_job', job_num=1) }}" data-loading="true">
+    <button type="submit" class="btn btn-primary">▶ Run Crawl Monitor</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if summary %}
+<script>
+  createSeverityChart('severity-chart', {{ summary.severity_counts|tojson }});
+  createIssueTypesChart('issue-types-chart', {{ summary.issue_type_counts|tojson }});
+</script>
+{% endif %}
+{% endblock %}

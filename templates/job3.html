@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Product SEO QA{% endblock %}
+{% block page_title %}🛍️ Product SEO QA{% endblock %}
+{% block page_subtitle %}Job 3 — AI-assisted product metadata checks with human approval{% endblock %}
+
+{% block header_actions %}
+<div class="flex items-center gap-2">
+  <form method="POST" action="{{ url_for('run_job', job_num=3) }}" data-loading="true" style="display:inline;">
+    <button type="submit" class="btn btn-primary btn-sm">▶ Run Now</button>
+  </form>
+  {% if summary %}
+  <a href="{{ url_for('export_job3', run_id=summary.run_id) }}" class="btn btn-secondary btn-sm" title="Download Product QA spreadsheet">
+    📥 Download Report (.xlsx)
+  </a>
+  <form method="POST" action="{{ url_for('share_report', job_num=3, run_id=summary.run_id) }}" style="display:inline;">
+    <button type="submit" class="btn btn-ghost btn-sm">🔗 Share</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+{% if summary %}
+
+<!-- Status Summary -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-card-icon amber">⏳</div>
+    <div class="stat-card-value">{{ summary.status_counts.pending }}</div>
+    <div class="stat-card-label">Pending Approval</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon green">✅</div>
+    <div class="stat-card-value">{{ summary.status_counts.approved }}</div>
+    <div class="stat-card-label">Approved</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon red">❌</div>
+    <div class="stat-card-value">{{ summary.status_counts.rejected }}</div>
+    <div class="stat-card-label">Rejected</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon blue">📋</div>
+    <div class="stat-card-value">{{ summary.total_issues }}</div>
+    <div class="stat-card-label">Total Issues</div>
+  </div>
+</div>
+
+<!-- Bulk Approve Form -->
+{% set pending_issues = summary.issues|selectattr('status', 'equalto', 'pending')|list %}
+{% if pending_issues %}
+<form method="POST" action="{{ url_for('bulk_approve') }}" id="bulk-form">
+  <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center gap-3">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;">
+        <input type="checkbox" id="select-all"> Select All Pending
+      </label>
+    </div>
+    <button type="submit" class="btn btn-success btn-sm">✅ Bulk Approve Selected</button>
+  </div>
+
+  <!-- Pending Approval Cards -->
+  {% for issue in pending_issues %}
+  <div class="approval-card">
+    <div class="approval-card-header">
+      <div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">{{ issue.product_name }}</div>
+        <span class="badge badge-{{ issue.status }}">{{ issue.issue_type }}</span>
+        <span class="text-sm text-muted" style="margin-left:8px;">{{ issue.template }}</span>
+      </div>
+      <input type="checkbox" name="issue_ids" value="{{ issue.id }}" class="issue-checkbox">
+    </div>
+
+    <div style="font-family:'SF Mono',monospace;font-size:12px;color:var(--text-tertiary);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;">
+      {{ issue.url }}
+    </div>
+
+    <div class="approval-current">
+      <div class="approval-label" style="color:var(--danger);">Current</div>
+      <div class="approval-value">{{ issue.current_value }}</div>
+    </div>
+
+    <div class="approval-suggested">
+      <div class="approval-label" style="color:var(--success);">Suggested Fix</div>
+      <div class="approval-value">{{ issue.suggested_value }}</div>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <div>
+        <span class="text-sm text-muted">AI Confidence:</span>
+        <span style="font-weight:600;font-size:13px;">{{ "%.0f"|format(issue.ai_confidence * 100) }}%</span>
+        <div class="confidence-bar" style="width:120px;display:inline-block;vertical-align:middle;margin-left:8px;">
+          <div class="confidence-fill" style="width:{{ issue.ai_confidence * 100 }}%;"></div>
+        </div>
+      </div>
+      <div class="approval-actions">
+        <form method="POST" action="{{ url_for('approve_qa', issue_id=issue.id) }}" style="display:inline;">
+          <input type="hidden" name="action" value="approve">
+          <button type="submit" class="btn btn-success btn-sm">✅ Approve</button>
+        </form>
+        <form method="POST" action="{{ url_for('approve_qa', issue_id=issue.id) }}" style="display:inline;">
+          <input type="hidden" name="action" value="reject">
+          <button type="submit" class="btn btn-danger btn-sm">❌ Reject</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</form>
+{% endif %}
+
+<!-- Processed Issues Table -->
+{% set processed = summary.issues|rejectattr('status', 'equalto', 'pending')|list %}
+{% if processed %}
+<div class="card mt-6">
+  <div class="card-header">
+    <span class="card-title">Processed Issues</span>
+  </div>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Issue</th>
+          <th>Current</th>
+          <th>Suggested</th>
+          <th>Status</th>
+          <th>Approved By</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in processed %}
+        <tr>
+          <td style="font-weight:500;">{{ issue.product_name }}</td>
+          <td>{{ issue.issue_type }}</td>
+          <td style="max-width:200px;font-size:12px;">{{ issue.current_value[:60] }}…</td>
+          <td style="max-width:200px;font-size:12px;">{{ issue.suggested_value[:60] }}…</td>
+          <td><span class="badge badge-{{ issue.status }}">{{ issue.status }}</span></td>
+          <td>{{ issue.approved_by or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  <div class="empty-state-icon">🛍️</div>
+  <div class="empty-state-title">No product QA data yet</div>
+  <div class="empty-state-text">Run the product QA to check product page metadata quality.</div>
+  <form method="POST" action="{{ url_for('run_job', job_num=3) }}" data-loading="true">
+    <button type="submit" class="btn btn-primary">▶ Run Product QA</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

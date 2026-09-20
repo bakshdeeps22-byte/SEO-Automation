@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Shared Reports{% endblock %}
+{% block page_title %}🔗 Shared Reports & Dashboards{% endblock %}
+{% block page_subtitle %}Admin — Manage client dashboard links and individual report access{% endblock %}
+
+{% block header_actions %}
+<button type="button" class="btn btn-primary" onclick="openShareModal()">
+  🔗 Share Client Dashboard
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Section 1: Client Dashboard Shares -->
+<div class="card mb-6">
+  <div class="card-header flex items-center justify-between">
+    <div>
+      <span class="card-title">🏢 Client Dashboard Share Links</span>
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:2px;">
+        Public, token-authenticated full SEO performance dashboards for clients.
+      </p>
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="openShareModal()">
+      + New Dashboard Link
+    </button>
+  </div>
+
+  {% if dashboard_reports %}
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Title</th>
+          <th>Created By</th>
+          <th>Expires</th>
+          <th>Views</th>
+          <th>Status</th>
+          <th>Share Link</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in dashboard_reports %}
+        <tr>
+          <td>
+            <span class="badge badge-primary" style="font-weight:600;">{{ r.client_name }}</span>
+          </td>
+          <td style="font-weight:600;">{{ r.title }}</td>
+          <td>{{ r.created_by or 'admin' }} <span class="text-muted text-sm">({{ r.created_at.strftime('%b %d') }})</span></td>
+          <td>{{ r.expires_at.strftime('%b %d, %Y') if r.expires_at else 'Permanent' }}</td>
+          <td><strong>{{ r.view_count }}</strong> views</td>
+          <td>
+            {% if r.is_active %}
+            <span class="badge badge-pass">Active</span>
+            {% else %}
+            <span class="badge badge-stable">Revoked</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.is_active %}
+            <div class="flex items-center gap-2">
+              <input type="text" class="share-link-input" style="width:240px;" value="{{ url_for('view_shared', token=r.share_token, _external=True) }}" readonly>
+              <button type="button" class="btn btn-ghost btn-sm copy-link-btn" title="Copy link">📋</button>
+              <a href="{{ url_for('view_shared', token=r.share_token) }}" target="_blank" class="btn btn-ghost btn-sm" title="Preview client view">↗</a>
+            </div>
+            {% else %}
+            <span class="text-muted text-sm">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.is_active %}
+            <form method="POST" action="{{ url_for('revoke_share', share_id=r.id) }}" style="display:inline;">
+              <button type="submit" class="btn btn-danger btn-sm" data-confirm="Revoke this client dashboard share link?">Revoke</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding:28px;text-align:center;color:var(--text-secondary);font-size:14px;">
+    No client dashboard share links generated yet. Click <strong>"Share Client Dashboard"</strong> above to generate a client portal link.
+  </div>
+  {% endif %}
+</div>
+
+<!-- Section 2: Individual Job Reports -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">📄 Individual Job Run Reports</span>
+  </div>
+
+  {% if job_reports %}
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Report</th>
+          <th>Job</th>
+          <th>Created</th>
+          <th>Expires</th>
+          <th>Views</th>
+          <th>Status</th>
+          <th>Share Link</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in job_reports %}
+        <tr>
+          <td style="font-weight:500;">{{ r.title }}</td>
+          <td>{{ job_names.get(r.job_number, 'Job Report') }}</td>
+          <td>{{ r.created_at.strftime('%b %d, %Y') }}</td>
+          <td>{{ r.expires_at.strftime('%b %d, %Y') if r.expires_at else '—' }}</td>
+          <td>{{ r.view_count }}</td>
+          <td>
+            {% if r.is_active %}
+            <span class="badge badge-pass">Active</span>
+            {% else %}
+            <span class="badge badge-stable">Revoked</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.is_active %}
+            <div class="flex items-center gap-2">
+              <input type="text" class="share-link-input" style="width:240px;" value="{{ url_for('view_shared', token=r.share_token, _external=True) }}" readonly>
+              <button type="button" class="btn btn-ghost btn-sm copy-link-btn" title="Copy link">📋</button>
+              <a href="{{ url_for('view_shared', token=r.share_token) }}" target="_blank" class="btn btn-ghost btn-sm" title="Preview report">↗</a>
+            </div>
+            {% else %}
+            <span class="text-muted text-sm">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.is_active %}
+            <form method="POST" action="{{ url_for('revoke_share', share_id=r.id) }}" style="display:inline;">
+              <button type="submit" class="btn btn-danger btn-sm" data-confirm="Revoke this share link?">Revoke</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding:28px;text-align:center;color:var(--text-secondary);font-size:14px;">
+    No individual job run links shared yet. You can share a specific run report from any Job detail page (Job 1 to Job 4).
+  </div>
+  {% endif %}
+</div>
+
+<!-- Modal: Share Client Dashboard -->
+<div class="modal-backdrop" id="share-modal" style="display:none;">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">🔗 Share Client Dashboard</div>
+      <button type="button" class="modal-close" onclick="closeShareModal()">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('share_dashboard') }}">
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:18px;">
+          Generate a shareable, read-only dashboard link for a client. They will see live audit results, issue totals, and traffic trends.
+        </p>
+
+        <input type="hidden" name="next" value="{{ request.path }}">
+
+        <div class="form-group mb-4">
+          <label class="form-label">Client / Dataset</label>
+          <select name="dataset_id" class="form-input" id="modal-client-select" onchange="updateDefaultTitle(this)">
+            {% for ds in datasets %}
+            <option value="{{ ds.id }}" data-client="{{ ds.client_name or 'NuroSparx' }}" {% if ds.is_active %}selected{% endif %}>
+              {{ ds.client_name or ds.original_filename }} {% if ds.is_active %}(Active Dataset){% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Client Name (Display)</label>
+          <input type="text" name="client_name" id="modal-client-name" class="form-input" value="{{ active_dataset.client_name if active_dataset else 'NuroSparx' }}" required>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Report Title</label>
+          <input type="text" name="title" id="modal-report-title" class="form-input" value="{{ active_dataset.client_name if active_dataset else 'NuroSparx' }} — SEO Performance Dashboard" required>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Link Expiration</label>
+          <select name="expiry_days" class="form-input">
+            <option value="7">7 Days</option>
+            <option value="30" selected>30 Days (Recommended)</option>
+            <option value="90">90 Days</option>
+            <option value="365">1 Year</option>
+            <option value="0">Never Expires</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeShareModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">🔗 Generate Client Share Link</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openShareModal() {
+    const m = document.getElementById('share-modal');
+    if (m) {
+      m.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function closeShareModal() {
+    const m = document.getElementById('share-modal');
+    if (m) {
+      m.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+  }
+
+  function updateDefaultTitle(selectEl) {
+    const opt = selectEl.options[selectEl.selectedIndex];
+    const client = opt.getAttribute('data-client') || opt.text;
+    const nameInput = document.getElementById('modal-client-name');
+    const titleInput = document.getElementById('modal-report-title');
+    if (nameInput) nameInput.value = client;
+    if (titleInput) titleInput.value = client + ' — SEO Performance Dashboard';
+  }
+
+  window.addEventListener('click', (e) => {
+    const m = document.getElementById('share-modal');
+    if (e.target === m) closeShareModal();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeShareModal();
+  });
+</script>
+{% endblock %}

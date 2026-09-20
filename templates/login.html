@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — NuroSparx SEO Automation</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="width:56px;height:56px;background:linear-gradient(135deg,#4F46E5,#7C3AED);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;font-size:28px;color:white;box-shadow:0 8px 24px rgba(79,70,229,0.3);">⚡</div>
+      </div>
+      <h2>NuroSparx</h2>
+      <p>SEO Performance Automation</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      {% for category, message in messages %}
+      <div class="flash-message {{ category }}" style="margin-bottom:20px;">
+        <span>{{ message }}</span>
+      </div>
+      {% endfor %}
+      {% endif %}
+      {% endwith %}
+
+      <form method="POST" action="{{ url_for('login') }}">
+        <div class="form-group">
+          <label class="form-label" for="username">Username</label>
+          <input type="text" id="username" name="username" class="form-input" placeholder="Enter username" required autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" id="password" name="password" class="form-input" placeholder="Enter password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg">Sign In</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

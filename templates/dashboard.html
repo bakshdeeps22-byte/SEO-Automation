@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}SEO Performance Overview{% endblock %}
+
+{% block header_actions %}
+<div class="flex items-center gap-3">
+  <a href="{{ url_for('export_dashboard_report') }}" class="btn btn-secondary" title="Download Complete Multi-tab SEO Report">
+    📥 Export Report (.xlsx)
+  </a>
+  <button type="button" class="btn btn-secondary" onclick="openShareModal()">
+    🔗 Share Client Dashboard
+  </button>
+  <form method="POST" action="{{ url_for('run_all') }}" data-loading="true">
+    <button type="submit" class="btn btn-primary">
+      ▶ Run All Jobs
+    </button>
+  </form>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Client Status Banner -->
+<div class="card mb-6" style="padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:var(--bg-secondary);border:1px solid var(--border);">
+  <div class="flex items-center gap-3">
+    <span style="font-size:20px;">🏢</span>
+    <div>
+      <span style="font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-tertiary);font-weight:600;">Active Client Workspace</span>
+      <div style="font-size:16px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+        {{ client_name }}
+        {% if active_dataset %}
+        <span class="badge badge-pass" style="font-size:11px;">Active Dataset: {{ active_dataset.original_filename }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  
+  <div class="flex items-center gap-2">
+    {% if datasets|length > 1 %}
+    <form method="POST" id="client-switch-form" style="display:inline-flex;align-items:center;gap:6px;">
+      <label for="client-select" style="font-size:12px;color:var(--text-secondary);">Switch Client:</label>
+      <select id="client-select" class="form-control" style="font-size:13px;padding:4px 10px;height:auto;" onchange="if(this.value) { document.getElementById('client-switch-form').action = this.value; document.getElementById('client-switch-form').submit(); }">
+        {% for ds in datasets %}
+        <option value="{{ url_for('activate_dataset', dataset_id=ds.id) }}" {% if ds.is_active %}selected{% endif %}>
+          {{ ds.client_name or ds.original_filename }} {% if ds.is_active %}(Active){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+    <a href="{{ url_for('upload_dataset') }}" class="btn btn-ghost btn-sm" title="Add or switch datasets">+ Upload Client Data</a>
+  </div>
+</div>
+
+<!-- Next Run Countdown -->
+{% if next_run %}
+<div class="next-run-card">
+  <div>
+    <h3>⏰ Next Scheduled Run</h3>
+    <div class="countdown" id="next-run-countdown" data-target="{{ next_run.isoformat() }}">
+      Calculating...
+    </div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:13px;opacity:0.85">Every Monday at 10:00 AM IST</div>
+    <div style="font-size:15px;font-weight:600;margin-top:4px">{{ next_run.strftime('%b %d, %Y %I:%M %p') }}</div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Stats Overview -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-card-icon blue">📋</div>
+    <div class="stat-card-value">{{ total_issues }}</div>
+    <div class="stat-card-label">Total Issues Found</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon red">🚨</div>
+    <div class="stat-card-value">{{ total_critical }}</div>
+    <div class="stat-card-label">Critical Alerts</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon amber">⏳</div>
+    <div class="stat-card-value">{{ pending_approvals }}</div>
+    <div class="stat-card-label">Pending Approvals</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon green">✅</div>
+    <div class="stat-card-value">4</div>
+    <div class="stat-card-label">Active Jobs</div>
+  </div>
+</div>
+
+<!-- Job Cards -->
+<div class="jobs-grid">
+  {% for job in jobs %}
+  <a href="{{ url_for('job' ~ job.number ~ '_detail') }}" class="job-card" style="text-decoration:none;color:inherit;">
+    <div class="job-card-header">
+      <span class="job-card-icon">{{ job.icon }}</span>
+      {% if job.latest_run %}
+      <span class="job-card-status completed">● Completed</span>
+      {% else %}
+      <span class="job-card-status not-run">○ Not run yet</span>
+      {% endif %}
+    </div>
+    <div class="job-card-title">{{ job.name }}</div>
+    <div class="job-card-description">
+      {% if job.number == 1 %}Technical SEO health checks across all crawled URLs{% endif %}
+      {% if job.number == 2 %}GSC query ranking changes with anomaly detection{% endif %}
+      {% if job.number == 3 %}Product page metadata quality with AI suggestions{% endif %}
+      {% if job.number == 4 %}Redirect chain validation for migration monitoring{% endif %}
+    </div>
+    {% if job.latest_run %}
+    <div class="job-card-stats">
+      <div class="job-card-stat">
+        <div class="job-card-stat-value">{{ job.latest_run.issues_found }}</div>
+        <div class="job-card-stat-label">Issues</div>
+      </div>
+      <div class="job-card-stat">
+        <div class="job-card-stat-value">{{ job.latest_run.critical_count }}</div>
+        <div class="job-card-stat-label">Critical</div>
+      </div>
+      <div class="job-card-stat">
+        <div class="job-card-stat-value">{{ "%.1f"|format(job.latest_run.duration_seconds) }}s</div>
+        <div class="job-card-stat-label">Duration</div>
+      </div>
+    </div>
+    <div class="job-card-date">Last run: {{ job.latest_run.run_date.strftime('%b %d, %Y %I:%M %p') }}</div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+
+<!-- Charts -->
+<div class="charts-grid">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">📈 Weekly Organic Sessions Trend</span>
+    </div>
+    <div class="chart-container" style="height:320px;">
+      <canvas id="sessions-chart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">📊 Traffic by Landing Page (Mar vs Aug)</span>
+    </div>
+    <div class="chart-container" style="height:320px;">
+      <canvas id="traffic-chart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Share Client Dashboard -->
+<div class="modal-backdrop" id="share-modal" style="display:none;">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">🔗 Share Client Dashboard</div>
+      <button type="button" class="modal-close" onclick="closeShareModal()">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('share_dashboard') }}">
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:18px;">
+          Generate a secure, read-only dashboard link for your client. Clients can view live performance metrics, audit statuses, and trends without logging in.
+        </p>
+
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <input type="hidden" name="dataset_id" value="{{ active_dataset.id if active_dataset else '' }}">
+
+        <div class="form-group mb-4">
+          <label class="form-label">Client Name</label>
+          <input type="text" name="client_name" class="form-input" value="{{ client_name }}" required>
+          <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">Branding shown on the client's shared view.</div>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Report Title</label>
+          <input type="text" name="title" class="form-input" value="{{ client_name }} — SEO Performance Dashboard" required>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Link Expiration</label>
+          <select name="expiry_days" class="form-input">
+            <option value="7">7 Days</option>
+            <option value="30" selected>30 Days (Recommended)</option>
+            <option value="90">90 Days</option>
+            <option value="365">1 Year</option>
+            <option value="0">Never Expires</option>
+          </select>
+        </div>
+
+        {% if active_shares %}
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text-primary);">
+            Existing Active Share Links ({{ active_shares|length }})
+          </div>
+          <div style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+            {% for s in active_shares %}
+            <div style="background:var(--bg-tertiary);padding:8px 12px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">
+                <strong>{{ s.client_name }}</strong> · <span class="text-muted">{{ s.expires_at.strftime('%b %d, %Y') if s.expires_at else 'Permanent' }}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <input type="text" class="share-link-input" style="width:160px;padding:4px 8px;font-size:11px;" value="{{ url_for('view_shared', token=s.share_token, _external=True) }}" readonly>
+                <button type="button" class="btn btn-ghost btn-sm copy-link-btn" title="Copy link">📋</button>
+                <a href="{{ url_for('view_shared', token=s.share_token) }}" target="_blank" class="btn btn-ghost btn-sm" title="Open client view">↗</a>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeShareModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">🔗 Generate Share Link</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Sessions chart
+  const sessionsLabels = {{ sessions|map(attribute='week_starting')|list|tojson }};
+  const sessionsData = {{ sessions|map(attribute='organic_sessions')|list|tojson }};
+  if (sessionsLabels.length > 0 && typeof createSessionsChart === 'function') {
+    createSessionsChart('sessions-chart', sessionsLabels, sessionsData);
+  }
+
+  // Traffic chart (top 15)
+  const trafficLabels = {{ traffic[:15]|map(attribute='landing_page')|list|tojson }};
+  const trafficPrev = {{ traffic[:15]|map(attribute='sessions_previous')|list|tojson }};
+  const trafficCurr = {{ traffic[:15]|map(attribute='sessions_current')|list|tojson }};
+  if (trafficLabels.length > 0 && typeof createTrafficChart === 'function') {
+    createTrafficChart('traffic-chart', trafficLabels, trafficPrev, trafficCurr);
+  }
+
+  // Modal controls
+  function openShareModal() {
+    const m = document.getElementById('share-modal');
+    if (m) {
+      m.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function closeShareModal() {
+    const m = document.getElementById('share-modal');
+    if (m) {
+      m.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+  }
+
+  // Close on backdrop click or ESC key
+  window.addEventListener('click', (e) => {
+    const m = document.getElementById('share-modal');
+    if (e.target === m) closeShareModal();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeShareModal();
+  });
+</script>
+{% endblock %}

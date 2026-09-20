@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}API Settings{% endblock %}
+{% block page_title %}🔌 API Settings{% endblock %}
+{% block page_subtitle %}Admin — Connect Google APIs, DataforSEO, and Screaming Frog{% endblock %}
+
+{% block content %}
+
+<!-- Google OAuth -->
+<div class="api-card">
+  <div class="api-card-header">
+    <div class="api-card-title">
+      <span style="font-size:24px;">🔑</span>
+      Google APIs (GSC, GA, Sheets, Docs)
+    </div>
+    <span class="connection-dot {{ 'connected' if google_connected else 'disconnected' }}"></span>
+  </div>
+  <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+    Connect your Google account to enable live GSC data pulls, GA session tracking, and automatic Google Sheet/Doc report generation.
+  </p>
+  <div>
+    {% if google_connected %}
+    <span class="badge badge-pass" style="margin-right:12px;">Connected</span>
+    <form method="POST" action="{{ url_for('google_oauth_disconnect') }}" style="display:inline;">
+      <button type="submit" class="btn btn-danger btn-sm">Disconnect</button>
+    </form>
+    {% else %}
+    <a href="{{ url_for('google_oauth_connect') }}" class="btn btn-primary btn-sm">🔗 Connect Google Account</a>
+    <p class="form-hint" style="margin-top:8px;">
+      Scopes: Search Console (read), Analytics (read), Sheets (read/write), Docs (write)
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- DataforSEO -->
+<div class="api-card">
+  <div class="api-card-header">
+    <div class="api-card-title">
+      <span style="font-size:24px;">🔍</span>
+      DataforSEO API
+    </div>
+    {% set dfs_config = configs.get('dataforseo') %}
+    <span class="connection-dot {{ 'connected' if dfs_config and dfs_config.is_connected else 'disconnected' }}"></span>
+  </div>
+  <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+    Connect DataforSEO for live redirect chain checking, SERP tracking, and on-page SEO audits.
+  </p>
+  <form method="POST" action="{{ url_for('api_settings') }}">
+    <input type="hidden" name="service" value="dataforseo">
+    <div class="form-group">
+      <label class="form-label" for="dataforseo_login">API Login (Email)</label>
+      <input type="email" id="dataforseo_login" name="dataforseo_login" class="form-input"
+             value="{{ dfs_config.get_config().get('login', '') if dfs_config else 'bakshdeeps.22@gmail.com' }}"
+             placeholder="your@email.com">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="dataforseo_password">API Password</label>
+      <input type="password" id="dataforseo_password" name="dataforseo_password" class="form-input"
+             placeholder="Enter your DataforSEO API password">
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">💾 Save & Test Connection</button>
+    {% if dfs_config %}
+    <span style="margin-left:12px;font-size:13px;color:var(--text-secondary);">
+      {% if dfs_config.is_connected %}
+      ✅ Connected — Last verified: {{ dfs_config.last_verified.strftime('%b %d %I:%M %p') if dfs_config.last_verified else 'N/A' }}
+      {% elif dfs_config.last_error %}
+      ❌ {{ dfs_config.last_error }}
+      {% endif %}
+    </span>
+    {% endif %}
+  </form>
+</div>
+
+<!-- Screaming Frog -->
+<div class="api-card">
+  <div class="api-card-header">
+    <div class="api-card-title">
+      <span style="font-size:24px;">🐸</span>
+      Screaming Frog (MCP Connection)
+    </div>
+    {% set sf_config = configs.get('screaming_frog') %}
+    <span class="connection-dot {{ 'connected' if sf_config and sf_config.is_connected else 'disconnected' }}"></span>
+  </div>
+  <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+    Configure the Screaming Frog CLI path to enable automated crawl exports. The crawl data will be automatically imported into the dashboard.
+  </p>
+  <form method="POST" action="{{ url_for('api_settings') }}">
+    <input type="hidden" name="service" value="screaming_frog">
+    <div class="form-group">
+      <label class="form-label" for="sf_path">Screaming Frog CLI Path</label>
+      <input type="text" id="sf_path" name="sf_path" class="form-input"
+             value="{{ sf_config.get_config().get('path', '') if sf_config else '' }}"
+             placeholder="/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher">
+      <p class="form-hint">Path to the Screaming Frog CLI executable on your machine</p>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">💾 Save Configuration</button>
+  </form>
+</div>
+
+<!-- Info Card -->
+<div class="card" style="border-left:4px solid var(--info);">
+  <div class="card-body" style="display:flex;gap:12px;align-items:flex-start;">
+    <span style="font-size:20px;">💡</span>
+    <div>
+      <div style="font-weight:600;margin-bottom:4px;">How API connections work</div>
+      <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+        When APIs are connected, the automation jobs will use live data instead of the uploaded Excel dataset.
+        For example, with GSC connected, Job 2 will pull real-time query data directly from Search Console.
+        Without API connections, the system works entirely from your uploaded dataset.
+      </p>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

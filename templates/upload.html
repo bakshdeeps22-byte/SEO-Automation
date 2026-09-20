@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Dataset{% endblock %}
+{% block page_title %}📁 Upload New Dataset{% endblock %}
+{% block page_subtitle %}Admin — Add or switch client Excel datasets{% endblock %}
+
+{% block content %}
+
+<!-- Upload Zone -->
+<div class="card mb-6">
+  <div class="card-body">
+    <form method="POST" enctype="multipart/form-data" id="upload-form" action="{{ url_for('upload_dataset') }}">
+      <div class="upload-zone" id="upload-zone">
+        <div class="upload-zone-icon">📄</div>
+        <div class="upload-zone-title">Drop your Excel file here</div>
+        <div class="upload-zone-subtitle">or click to browse — Accepts .xlsx and .xls files (max 50MB)</div>
+        <input type="file" name="file" id="file-input" accept=".xlsx,.xls" hidden>
+      </div>
+
+      <div style="max-width:420px;margin:20px auto 0;text-align:left;">
+        <label class="form-label" style="font-weight:600;">Client Workspace Name</label>
+        <input type="text" name="client_name" class="form-input" placeholder="e.g. NuroSparx, Acme Corp, Meridian Pet" value="NuroSparx">
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">
+          Assign this dataset to a specific client for branded dashboard sharing.
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:20px;">
+        <button type="submit" class="btn btn-primary">📤 Upload & Process Dataset</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Option 2: Connect Project via APIs -->
+<div class="card mb-6">
+  <div class="card-header flex items-center justify-between">
+    <div>
+      <span class="card-title">🌐 Connect New Project via APIs</span>
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:2px;">
+        Set up a client workspace using Google Search Console, Google Analytics 4, or DataForSEO APIs.
+      </p>
+    </div>
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('create_api_project') }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;">
+        <div class="form-group">
+          <label class="form-label">Client / Project Name *</label>
+          <input type="text" name="client_name" class="form-input" placeholder="e.g. Acme Corp or Meridian Pet" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Website Domain / Target URL *</label>
+          <input type="url" name="website_url" class="form-input" placeholder="https://www.example.com" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">GSC Site URL (Optional)</label>
+          <input type="text" name="gsc_site_url" class="form-input" placeholder="sc-domain:example.com or https://example.com/">
+        </div>
+        <div class="form-group">
+          <label class="form-label">GA4 Property ID (Optional)</label>
+          <input type="text" name="ga_property_id" class="form-input" placeholder="e.g. 318492015">
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;align-items:center;justify-content:flex-end;">
+        <button type="submit" class="btn btn-secondary">⚡ Create API Project Workspace</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Active Dataset -->
+{% if active %}
+<div class="card mb-6">
+  <div class="card-header flex items-center justify-between">
+    <span class="card-title">✅ Active Client Dataset</span>
+    <span class="badge badge-pass">Currently Serving Dashboard</span>
+  </div>
+  <div class="card-body">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="width:52px;height:52px;background:var(--success-bg);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;font-size:26px;">📊</div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+            <span style="font-size:12px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;">Client:</span>
+            <span class="badge badge-primary" style="font-size:13px;font-weight:700;">{{ active.client_name or 'NuroSparx' }}</span>
+          </div>
+          <div style="font-weight:700;font-size:15px;color:var(--text-primary);">{{ active.original_filename }}</div>
+          <div style="font-size:13px;color:var(--text-secondary);">
+            Uploaded {{ active.upload_date.strftime('%b %d, %Y %I:%M %p') }}
+            {% if active.get_sheet_names() %}
+            · Sheets: {{ active.get_sheet_names()|join(', ') }}
+            {% endif %}
+          </div>
+          {% if active.get_row_counts() %}
+          <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">
+            {% for sheet, count in active.get_row_counts().items() %}
+            {{ sheet }}: {{ count }} rows{% if not loop.last %} · {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Quick client rename form -->
+      <form method="POST" action="{{ url_for('rename_client', dataset_id=active.id) }}" style="display:inline-flex;gap:6px;align-items:center;">
+        <input type="text" name="client_name" class="form-input" style="width:160px;padding:6px 10px;font-size:12px;" placeholder="Rename client" value="{{ active.client_name or '' }}" required>
+        <button type="submit" class="btn btn-secondary btn-sm">Rename Client</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Dataset History -->
+{% if datasets %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">📋 Client Dataset Management</span>
+  </div>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Client Name</th>
+          <th>Filename</th>
+          <th>Uploaded</th>
+          <th>Sheets</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ds in datasets %}
+        <tr>
+          <td>
+            <form method="POST" action="{{ url_for('rename_client', dataset_id=ds.id) }}" style="display:flex;align-items:center;gap:6px;">
+              <input type="text" name="client_name" value="{{ ds.client_name or 'NuroSparx' }}" class="form-input" style="width:140px;padding:4px 8px;font-size:12px;font-weight:600;" required>
+              <button type="submit" class="btn btn-ghost btn-sm" title="Save client name">💾</button>
+            </form>
+          </td>
+          <td style="font-weight:500;">{{ ds.original_filename }}</td>
+          <td>{{ ds.upload_date.strftime('%b %d, %Y %I:%M %p') }}</td>
+          <td>{{ ds.get_sheet_names()|length }} sheets</td>
+          <td>
+            {% if ds.is_active %}
+            <span class="badge badge-pass">Active</span>
+            {% else %}
+            <span class="badge badge-stable">Inactive</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="flex items-center gap-2">
+              {% if not ds.is_active %}
+              <form method="POST" action="{{ url_for('activate_dataset', dataset_id=ds.id) }}" style="display:inline;">
+                <button type="submit" class="btn btn-secondary btn-sm">Activate</button>
+              </form>
+              {% else %}
+              <span class="text-muted text-sm">Active Workspace</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

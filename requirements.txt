@@ -1,0 +1,15 @@
+flask>=3.0
+flask-login
+flask-sqlalchemy
+apscheduler
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+gspread
+pandas
+openpyxl
+requests
+python-dotenv
+werkzeug
+gunicorn>=21.2.0

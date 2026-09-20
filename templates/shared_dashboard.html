@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ shared.title }} — Client SEO Dashboard</title>
+  <meta name="description" content="SEO Performance Dashboard for {{ shared.client_name }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    .client-hero {
+      background: linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%);
+      color: #FFFFFF;
+      padding: 36px 40px;
+      border-radius: var(--radius-lg);
+      margin-bottom: 28px;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+    }
+    .client-hero::after {
+      content: '';
+      position: absolute;
+      top: -40px;
+      right: -40px;
+      width: 220px;
+      height: 220px;
+      background: radial-gradient(circle, rgba(129, 140, 248, 0.25) 0%, rgba(255, 255, 255, 0) 70%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .client-hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .client-hero-title {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    .client-hero-meta {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.8);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+    }
+    .client-hero-actions {
+      margin-top: 18px;
+      display: flex;
+      gap: 12px;
+    }
+    .btn-client-print {
+      background: rgba(255, 255, 255, 0.2);
+      color: #FFFFFF;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+    .btn-client-print:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    .client-container {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 32px 20px 60px;
+    }
+    .client-footer {
+      text-align: center;
+      padding: 40px 0 20px;
+      font-size: 13px;
+      color: var(--text-tertiary);
+      border-top: 1px solid var(--border);
+      margin-top: 48px;
+    }
+    @media print {
+      body { background: #fff !important; }
+      .client-hero-actions { display: none !important; }
+      .client-hero { background: #1E1B4B !important; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body style="background: var(--bg-primary);">
+
+  <div class="client-container">
+    <!-- Hero Banner -->
+    <div class="client-hero">
+      <div class="client-hero-badge">
+        <span>🔒</span> Confidential Client Report
+      </div>
+      <h1 class="client-hero-title">{{ shared.title }}</h1>
+      <div class="client-hero-meta">
+        <div>🏢 <strong>Client:</strong> {{ shared.client_name }}</div>
+        <div>📅 <strong>Shared:</strong> {{ shared.created_at.strftime('%B %d, %Y') }}</div>
+        {% if shared.expires_at %}
+        <div>⏳ <strong>Access Valid Until:</strong> {{ shared.expires_at.strftime('%B %d, %Y') }}</div>
+        {% else %}
+        <div>⏳ <strong>Access:</strong> Permanent</div>
+        {% endif %}
+        <div>👁️ <strong>Views:</strong> {{ shared.view_count }}</div>
+      </div>
+      <div class="client-hero-actions">
+        <a href="{{ url_for('export_shared', token=shared.share_token) }}" class="btn-client-print" style="text-decoration:none;">
+          📥 Download Full Report (.xlsx)
+        </a>
+        <button type="button" class="btn-client-print" onclick="window.print()">
+          🖨️ Print / Save PDF
+        </button>
+      </div>
+    </div>
+
+    <!-- Overview Stats Grid -->
+    <div class="stats-grid mb-6">
+      <div class="stat-card">
+        <div class="stat-card-icon blue">📋</div>
+        <div class="stat-card-value">{{ total_issues }}</div>
+        <div class="stat-card-label">Total SEO Issues Detected</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon red">🚨</div>
+        <div class="stat-card-value">{{ total_critical }}</div>
+        <div class="stat-card-label">Critical Action Items</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon amber">⏳</div>
+        <div class="stat-card-value">{{ pending_approvals }}</div>
+        <div class="stat-card-label">Pending Metadata Approvals</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon green">✅</div>
+        <div class="stat-card-value">4 / 4</div>
+        <div class="stat-card-label">Active Monitoring Modules</div>
+      </div>
+    </div>
+
+    <!-- Job Cards Summary -->
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary);">
+      📊 Automated Audit Modules
+    </h2>
+
+    <div class="jobs-grid mb-6">
+      {% for job in jobs %}
+      <div class="job-card">
+        <div class="job-card-header">
+          <span class="job-card-icon">{{ job.icon }}</span>
+          {% if job.latest_run %}
+          <span class="job-card-status completed">● Completed</span>
+          {% else %}
+          <span class="job-card-status not-run">○ Pending Run</span>
+          {% endif %}
+        </div>
+        <div class="job-card-title">{{ job.name }}</div>
+        <div class="job-card-description">
+          {% if job.number == 1 %}Technical crawl health checks across all crawled URLs (4xx, 5xx, redirects, meta tags){% endif %}
+          {% if job.number == 2 %}GSC query ranking shifts, drops, and search anomaly detection{% endif %}
+          {% if job.number == 3 %}Product metadata QA with AI-generated CTR optimization recommendations{% endif %}
+          {% if job.number == 4 %}Redirect chain & migration validation (301 status, hops, loops){% endif %}
+        </div>
+        {% if job.latest_run %}
+        <div class="job-card-stats">
+          <div class="job-card-stat">
+            <div class="job-card-stat-value">{{ job.latest_run.issues_found }}</div>
+            <div class="job-card-stat-label">Issues</div>
+          </div>
+          <div class="job-card-stat">
+            <div class="job-card-stat-value">{{ job.latest_run.critical_count }}</div>
+            <div class="job-card-stat-label">Critical</div>
+          </div>
+          <div class="job-card-stat">
+            <div class="job-card-stat-value">{{ "%.1f"|format(job.latest_run.duration_seconds) }}s</div>
+            <div class="job-card-stat-label">Duration</div>
+          </div>
+        </div>
+        <div class="job-card-date">Last audit: {{ job.latest_run.run_date.strftime('%b %d, %Y %I:%M %p') }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Interactive Trend Charts -->
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary);">
+      📈 Traffic & Performance Trends
+    </h2>
+
+    <div class="charts-grid">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📈 Weekly Organic Sessions Trend</span>
+        </div>
+        <div class="chart-container" style="height:320px;">
+          <canvas id="sessions-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📊 Traffic by Landing Page (Prior vs Current)</span>
+        </div>
+        <div class="chart-container" style="height:320px;">
+          <canvas id="traffic-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="client-footer">
+      <div>Powered by <strong>NuroSparx SEO Performance Automation</strong></div>
+      <div style="margin-top:6px;">Automated weekly crawl, GSC anomaly detection, and metadata quality monitoring.</div>
+    </footer>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Sessions chart
+      const sessionsLabels = {{ sessions|map(attribute='week_starting')|list|tojson }};
+      const sessionsData = {{ sessions|map(attribute='organic_sessions')|list|tojson }};
+      if (sessionsLabels.length > 0 && typeof createSessionsChart === 'function') {
+        createSessionsChart('sessions-chart', sessionsLabels, sessionsData);
+      }
+
+      // Traffic chart (top 15)
+      const trafficLabels = {{ traffic[:15]|map(attribute='landing_page')|list|tojson }};
+      const trafficPrev = {{ traffic[:15]|map(attribute='sessions_previous')|list|tojson }};
+      const trafficCurr = {{ traffic[:15]|map(attribute='sessions_current')|list|tojson }};
+      if (trafficLabels.length > 0 && typeof createTrafficChart === 'function') {
+        createTrafficChart('traffic-chart', trafficLabels, trafficPrev, trafficCurr);
+      }
+    });
+  </script>
+</body>
+</html>

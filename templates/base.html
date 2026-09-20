@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}SEO Automation{% endblock %} — NuroSparx</title>
+  <meta name="description" content="SEO Performance Automation Dashboard by NuroSparx">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% if current_user.is_authenticated %}
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">⚡</div>
+        <div>
+          <h1>NuroSparx</h1>
+          <span>SEO Automation</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">Overview</div>
+          <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+            <span class="nav-item-icon">📊</span>
+            Dashboard
+          </a>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">Automation Jobs</div>
+          <a href="{{ url_for('job1_detail') }}" class="nav-item {% if request.endpoint == 'job1_detail' %}active{% endif %}">
+            <span class="nav-item-icon">🔍</span>
+            Crawl Monitor
+          </a>
+          <a href="{{ url_for('job2_detail') }}" class="nav-item {% if request.endpoint == 'job2_detail' %}active{% endif %}">
+            <span class="nav-item-icon">📈</span>
+            GSC Anomalies
+          </a>
+          <a href="{{ url_for('job3_detail') }}" class="nav-item {% if request.endpoint == 'job3_detail' %}active{% endif %}">
+            <span class="nav-item-icon">🛍️</span>
+            Product QA
+            {% set pending = pending_count|default(0) %}
+          </a>
+          <a href="{{ url_for('job4_detail') }}" class="nav-item {% if request.endpoint == 'job4_detail' %}active{% endif %}">
+            <span class="nav-item-icon">🔗</span>
+            Redirect Monitor
+          </a>
+        </div>
+
+        {% if current_user.is_admin %}
+        <div class="nav-section">
+          <div class="nav-section-title">Admin</div>
+          {% if current_user.is_superadmin %}
+          <a href="{{ url_for('access_management') }}" class="nav-item {% if request.endpoint == 'access_management' %}active{% endif %}">
+            <span class="nav-item-icon">👥</span>
+            Access Management
+          </a>
+          {% endif %}
+          <a href="{{ url_for('upload_dataset') }}" class="nav-item {% if request.endpoint == 'upload_dataset' %}active{% endif %}">
+            <span class="nav-item-icon">📁</span>
+            Upload Dataset
+          </a>
+          <a href="{{ url_for('api_settings') }}" class="nav-item {% if request.endpoint == 'api_settings' %}active{% endif %}">
+            <span class="nav-item-icon">🔌</span>
+            API Settings
+          </a>
+          <a href="{{ url_for('shared_reports_list') }}" class="nav-item {% if request.endpoint == 'shared_reports_list' %}active{% endif %}">
+            <span class="nav-item-icon">🔗</span>
+            Shared Reports
+          </a>
+        </div>
+        {% endif %}
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="sidebar-user-avatar">{{ current_user.username[0]|upper }}</div>
+          <div class="sidebar-user-info">
+            <div class="sidebar-user-name">{{ current_user.username }}</div>
+            <div class="sidebar-user-role">
+              {% if current_user.is_superadmin %}Superadmin
+              {% elif current_user.role == 'manager' %}Client Manager
+              {% else %}Viewer{% endif %}
+            </div>
+          </div>
+          <a href="{{ url_for('logout') }}" class="btn btn-ghost btn-sm" title="Logout">↗</a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <header class="page-header">
+        <div class="page-header-left">
+          <!-- Account / Project Selector -->
+          {% if current_account %}
+          <div class="account-selector-bar" style="position:relative;margin-bottom:6px;">
+            <div class="flex items-center gap-2">
+              <span style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-tertiary);font-weight:700;">Account:</span>
+              <button type="button" class="account-dropdown-toggle" onclick="toggleAccountMenu(event)" style="background:var(--bg-secondary);border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:13px;color:var(--text-primary);">
+                <span>🏢 {{ current_account.client_name }}</span>
+                {% if accessible_accounts and accessible_accounts|length > 1 %}
+                <span style="font-size:10px;color:var(--text-tertiary);">▾</span>
+                {% endif %}
+              </button>
+              {% if current_account.project_type == 'api' %}
+              <span class="badge badge-primary" style="font-size:10px;">API Live Project</span>
+              {% endif %}
+            </div>
+
+            {% if accessible_accounts and accessible_accounts|length > 1 %}
+            <div id="account-dropdown-menu" style="display:none;position:absolute;top:100%;left:0;margin-top:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-xl);min-width:260px;z-index:200;overflow:hidden;">
+              <div style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg-primary);">
+                Switch Account / Project
+              </div>
+              <div style="max-height:240px;overflow-y:auto;">
+                {% for acc in accessible_accounts %}
+                <form method="POST" action="{{ url_for('switch_account', dataset_id=acc.id) }}">
+                  <input type="hidden" name="next" value="{{ request.path }}">
+                  <button type="submit" style="width:100%;text-align:left;padding:10px 14px;background:{% if current_account.id == acc.id %}var(--primary-50){% else %}transparent{% endif %};border:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border-light);font-size:13px;">
+                    <div>
+                      <div style="font-weight:{% if current_account.id == acc.id %}700{% else %}600{% endif %};color:var(--text-primary);">
+                        {{ acc.client_name }}
+                      </div>
+                      <div style="font-size:11px;color:var(--text-secondary);">
+                        {{ acc.original_filename if acc.project_type == 'dataset' else (acc.website_url or 'API Live Project') }}
+                      </div>
+                    </div>
+                    {% if current_account.id == acc.id %}
+                    <span style="color:var(--primary);font-weight:bold;">✓</span>
+                    {% endif %}
+                  </button>
+                </form>
+                {% endfor %}
+              </div>
+              {% if current_user.is_admin %}
+              <div style="border-top:1px solid var(--border);padding:8px 12px;background:var(--bg-primary);">
+                <a href="{{ url_for('upload_dataset') }}" style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;color:var(--primary);">
+                  ➕ Add New Account / Project
+                </a>
+              </div>
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <div>
+            <h2 class="page-title">{% block page_title %}Dashboard{% endblock %}</h2>
+            <p class="page-subtitle">{% block page_subtitle %}{% endblock %}</p>
+          </div>
+        </div>
+        <div class="page-header-actions">
+          {% block header_actions %}{% endblock %}
+        </div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flash-messages">
+        {% for category, message in messages %}
+        <div class="flash-message {{ category }}">
+          <span>{{ message }}</span>
+          <button class="flash-close">&times;</button>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+
+      <div class="content-area">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+  {% else %}
+  {% block unauthenticated %}{% endblock %}
+  {% endif %}
+
+  <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

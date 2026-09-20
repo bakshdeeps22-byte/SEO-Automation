@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}Access Management{% endblock %}
+{% block page_title %}👥 Access Management{% endblock %}
+{% block page_subtitle %}Superadmin — Manage team accounts and project-level client permissions{% endblock %}
+
+{% block header_actions %}
+<button type="button" class="btn btn-primary" onclick="openAddUserModal()">
+  ➕ Add Team Member
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Overview Stats -->
+<div class="stats-grid mb-6">
+  <div class="stat-card">
+    <div class="stat-card-icon blue">👥</div>
+    <div class="stat-card-value">{{ users|length }}</div>
+    <div class="stat-card-label">Registered Accounts</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon purple">👑</div>
+    <div class="stat-card-value">{{ users|selectattr('role', 'equalto', 'superadmin')|list|length + users|selectattr('role', 'equalto', 'admin')|list|length }}</div>
+    <div class="stat-card-label">Superadmins</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon amber">🛠️</div>
+    <div class="stat-card-value">{{ users|selectattr('role', 'equalto', 'manager')|list|length }}</div>
+    <div class="stat-card-label">Client Managers</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon green">👁️</div>
+    <div class="stat-card-value">{{ users|selectattr('role', 'equalto', 'viewer')|list|length }}</div>
+    <div class="stat-card-label">Client Viewers</div>
+  </div>
+</div>
+
+<!-- Team Members Table -->
+<div class="card mb-6">
+  <div class="card-header flex items-center justify-between">
+    <div>
+      <span class="card-title">User Accounts & Project Access</span>
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:2px;">
+        Users can log in and view only the specific client projects assigned to them.
+      </p>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Role</th>
+          <th>Assigned Client Projects</th>
+          <th>Status</th>
+          <th>Joined</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>
+            <div class="flex items-center gap-3">
+              <div class="sidebar-user-avatar" style="width:36px;height:36px;font-size:14px;">
+                {{ u.username[0]|upper }}
+              </div>
+              <div>
+                <div style="font-weight:700;color:var(--text-primary);">{{ u.username }}</div>
+                <div style="font-size:12px;color:var(--text-secondary);">{{ u.email or 'No email set' }}</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            {% if u.is_superadmin %}
+            <span class="badge" style="background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE;font-weight:700;">👑 Superadmin</span>
+            {% elif u.role == 'manager' %}
+            <span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;font-weight:600;">🛠️ Manager</span>
+            {% else %}
+            <span class="badge" style="background:#F1F5F9;color:#475569;border:1px solid #E2E8F0;">👁️ Viewer</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.is_superadmin or 'all' in u.get_assigned_projects_list() %}
+            <span class="badge badge-pass" style="font-size:11px;">🌟 All Client Projects</span>
+            {% else %}
+            <div class="flex items-center gap-1" style="flex-wrap:wrap;">
+              {% set assigned = u.get_assigned_projects_list() %}
+              {% for p_id in assigned %}
+                {% set ds = datasets|selectattr('id', 'equalto', p_id|int)|first %}
+                {% if ds %}
+                <span class="badge badge-primary" style="font-size:11px;">{{ ds.client_name }}</span>
+                {% else %}
+                <span class="badge badge-stable" style="font-size:11px;">Project #{{ p_id }}</span>
+                {% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.is_active %}
+            <span class="badge badge-pass">Active</span>
+            {% else %}
+            <span class="badge badge-danger">Suspended</span>
+            {% endif %}
+          </td>
+          <td style="font-size:13px;color:var(--text-secondary);">
+            {{ u.created_at.strftime('%b %d, %Y') if u.created_at else '—' }}
+          </td>
+          <td>
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="openEditUserModal({{ u.id }}, '{{ u.username }}', '{{ u.email or '' }}', '{{ u.role }}', {{ u.get_assigned_projects_list()|tojson }})">
+                ✏️ Edit
+              </button>
+
+              {% if u.id != current_user.id %}
+              <form method="POST" action="{{ url_for('delete_user', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to remove user {{ u.username }}?');">
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal: Add Team Member -->
+<div class="modal-backdrop" id="add-user-modal" style="display:none;">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">➕ Add New Team Member</div>
+      <button type="button" class="modal-close" onclick="closeAddUserModal()">✕</button>
+    </div>
+    <form method="POST" action="{{ url_for('create_user') }}">
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:18px;">
+          Create login credentials and grant access to specific client projects.
+        </p>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Email Address *</label>
+          <input type="email" name="email" class="form-input" placeholder="e.g. client@company.com or analyst@agency.com" required>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Username *</label>
+          <input type="text" name="username" class="form-input" placeholder="e.g. john_doe" required>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Initial Password *</label>
+          <input type="password" name="password" class="form-input" placeholder="Set temporary or secure password" required minlength="6">
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">User Role</label>
+          <select name="role" class="form-input" id="new-user-role" onchange="toggleProjectSelect(this, 'new-project-select-box')">
+            <option value="viewer">Client Viewer (Read-only access to assigned projects)</option>
+            <option value="manager">Client Manager (Can run audits, approve QA, download reports)</option>
+            <option value="superadmin">Superadmin (Full access to all client projects, APIs, & access control)</option>
+          </select>
+        </div>
+
+        <div class="form-group mb-4" id="new-project-select-box">
+          <label class="form-label">Assigned Client Projects</label>
+          <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;cursor:pointer;">
+              <input type="checkbox" name="project_all" value="all" id="new-project-all" onchange="toggleAllProjects(this, 'new-project-item')">
+              <span>🌟 All Client Projects</span>
+            </label>
+            <hr style="border:none;border-top:1px solid var(--border);margin:4px 0;">
+            {% for ds in datasets %}
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" name="project_ids" value="{{ ds.id }}" class="new-project-item">
+              <span>{{ ds.client_name }} <span class="text-muted text-sm">({{ ds.original_filename }})</span></span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeAddUserModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">➕ Create User Account</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Edit Team Member -->
+<div class="modal-backdrop" id="edit-user-modal" style="display:none;">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">✏️ Edit Team Member Access</div>
+      <button type="button" class="modal-close" onclick="closeEditUserModal()">✕</button>
+    </div>
+    <form method="POST" id="edit-user-form" action="">
+      <div class="modal-body">
+        <div class="form-group mb-4">
+          <label class="form-label">Email Address</label>
+          <input type="email" name="email" id="edit-user-email" class="form-input">
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Reset Password (leave blank to keep current)</label>
+          <input type="password" name="new_password" class="form-input" placeholder="New password" minlength="6">
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">User Role</label>
+          <select name="role" id="edit-user-role" class="form-input">
+            <option value="viewer">Client Viewer (Read-only)</option>
+            <option value="manager">Client Manager (Run & Approve)</option>
+            <option value="superadmin">Superadmin (All permissions)</option>
+          </select>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Assigned Client Projects</label>
+          <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;cursor:pointer;">
+              <input type="checkbox" name="project_all" value="all" id="edit-project-all" onchange="toggleAllProjects(this, 'edit-project-item')">
+              <span>🌟 All Client Projects</span>
+            </label>
+            <hr style="border:none;border-top:1px solid var(--border);margin:4px 0;">
+            {% for ds in datasets %}
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" name="project_ids" value="{{ ds.id }}" class="edit-project-item" id="edit-proj-{{ ds.id }}">
+              <span>{{ ds.client_name }} <span class="text-muted text-sm">({{ ds.original_filename }})</span></span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeEditUserModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save Permissions</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openAddUserModal() {
+    document.getElementById('add-user-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeAddUserModal() {
+    document.getElementById('add-user-modal').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  function openEditUserModal(id, username, email, role, assigned) {
+    document.getElementById('edit-user-form').action = '/access-management/edit/' + id;
+    document.getElementById('edit-user-email').value = email;
+    document.getElementById('edit-user-role').value = role;
+
+    // Set checkboxes
+    const allCb = document.getElementById('edit-project-all');
+    const items = document.querySelectorAll('.edit-project-item');
+    const isAll = assigned.includes('all');
+    allCb.checked = isAll;
+
+    items.forEach(cb => {
+      cb.checked = isAll || assigned.includes(parseInt(cb.value)) || assigned.includes(String(cb.value));
+      cb.disabled = isAll;
+    });
+
+    document.getElementById('edit-user-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeEditUserModal() {
+    document.getElementById('edit-user-modal').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  function toggleAllProjects(allCb, itemClass) {
+    document.querySelectorAll('.' + itemClass).forEach(cb => {
+      cb.checked = allCb.checked;
+      cb.disabled = allCb.checked;
+    });
+  }
+
+  function toggleProjectSelect(selectEl, boxId) {
+    const box = document.getElementById(boxId);
+    if (box) {
+      if (selectEl.value === 'superadmin') {
+        box.style.display = 'none';
+      } else {
+        box.style.display = 'block';
+      }
+    }
+  }
+
+  window.addEventListener('click', (e) => {
+    const m1 = document.getElementById('add-user-modal');
+    const m2 = document.getElementById('edit-user-modal');
+    if (e.target === m1) closeAddUserModal();
+    if (e.target === m2) closeEditUserModal();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeAddUserModal();
+      closeEditUserModal();
+    }
+  });
+</script>
+{% endblock %}
