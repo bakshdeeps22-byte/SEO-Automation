@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}Pending Tasks — SEO Task Queue{% endblock %}
+{% block page_title %}📋 Pending Tasks{% endblock %}
+{% block page_subtitle %}Actionable task queue for developers and SEO executives to implement and verify fixes{% endblock %}
+
+{% block header_actions %}
+<div class="flex items-center gap-3">
+  <span class="badge badge-primary" style="font-size:12px;padding:6px 12px;">
+    🏢 {{ current_account.client_name if current_account else 'Workspace' }}
+  </span>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Summary Stats -->
+<div class="stats-grid mb-6">
+  <a href="{{ url_for('pending_tasks', status='pending', job=job_filter) }}" class="stat-card" style="text-decoration:none;border-bottom:3px solid var(--warning);">
+    <div class="stat-card-icon amber">⏳</div>
+    <div class="stat-card-value">{{ pending_count }}</div>
+    <div class="stat-card-label">To Do / In Progress</div>
+  </a>
+
+  <a href="{{ url_for('pending_tasks', status='completed', job=job_filter) }}" class="stat-card" style="text-decoration:none;border-bottom:3px solid var(--primary);">
+    <div class="stat-card-icon blue">🛠️</div>
+    <div class="stat-card-value">{{ completed_count }}</div>
+    <div class="stat-card-label">Completed (Ready to Verify)</div>
+  </a>
+
+  <a href="{{ url_for('pending_tasks', status='verified', job=job_filter) }}" class="stat-card" style="text-decoration:none;border-bottom:3px solid var(--success);">
+    <div class="stat-card-icon green">✅</div>
+    <div class="stat-card-value">{{ verified_count }}</div>
+    <div class="stat-card-label">Live Verified Fixes</div>
+  </a>
+</div>
+
+<!-- Tabs & Filters -->
+<div class="card mb-6" style="padding:12px 20px;">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <!-- Status Tabs -->
+    <div class="filter-bar" style="margin:0;padding:0;border:none;">
+      <a href="{{ url_for('pending_tasks', status='all', job=job_filter) }}" class="filter-chip {% if status_filter == 'all' %}active{% endif %}">
+        All Tasks ({{ tasks|length }})
+      </a>
+      <a href="{{ url_for('pending_tasks', status='pending', job=job_filter) }}" class="filter-chip {% if status_filter == 'pending' %}active{% endif %}">
+        ⏳ In Progress ({{ pending_count }})
+      </a>
+      <a href="{{ url_for('pending_tasks', status='completed', job=job_filter) }}" class="filter-chip {% if status_filter == 'completed' %}active{% endif %}">
+        🛠️ Completed ({{ completed_count }})
+      </a>
+      <a href="{{ url_for('pending_tasks', status='verified', job=job_filter) }}" class="filter-chip {% if status_filter == 'verified' %}active{% endif %}">
+        ✅ Verified ({{ verified_count }})
+      </a>
+    </div>
+
+    <!-- Job Filter -->
+    <div class="flex items-center gap-2">
+      <span style="font-size:12px;font-weight:600;color:var(--text-secondary);">Audit Module:</span>
+      <select class="form-input" style="padding:4px 10px;font-size:13px;width:auto;" onchange="location.href=this.value;">
+        <option value="{{ url_for('pending_tasks', status=status_filter) }}" {% if not job_filter %}selected{% endif %}>All Jobs</option>
+        <option value="{{ url_for('pending_tasks', status=status_filter, job=1) }}" {% if job_filter == 1 %}selected{% endif %}>🔍 Job 1: Crawl Monitor</option>
+        <option value="{{ url_for('pending_tasks', status=status_filter, job=2) }}" {% if job_filter == 2 %}selected{% endif %}>📈 Job 2: GSC Anomalies</option>
+        <option value="{{ url_for('pending_tasks', status=status_filter, job=3) }}" {% if job_filter == 3 %}selected{% endif %}>🛍️ Job 3: Product QA</option>
+        <option value="{{ url_for('pending_tasks', status=status_filter, job=4) }}" {% if job_filter == 4 %}selected{% endif %}>🔗 Job 4: Redirect Checks</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Tasks Table -->
+<div class="card">
+  <div class="card-header flex items-center justify-between">
+    <div>
+      <span class="card-title">Tasks Queue</span>
+      <div class="card-subtitle">Each approved category represents a prioritized batch of SEO fixes to implement.</div>
+    </div>
+  </div>
+
+  <div class="table-container">
+    {% if tasks %}
+    <table>
+      <thead>
+        <tr>
+          <th>Audit Source</th>
+          <th>Task Title & Category</th>
+          <th>Affected Items</th>
+          <th>Severity</th>
+          <th>Approval Details</th>
+          <th>Status</th>
+          <th style="text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in tasks %}
+        <tr>
+          <!-- Source -->
+          <td>
+            <span class="badge badge-secondary" style="font-size:11px;">
+              {% if task.job_number == 1 %}🔍 Crawl
+              {% elif task.job_number == 2 %}📈 GSC
+              {% elif task.job_number == 3 %}🛍️ Product QA
+              {% elif task.job_number == 4 %}🔗 Redirects
+              {% else %}Audit{% endif %}
+            </span>
+          </td>
+
+          <!-- Title -->
+          <td>
+            <div style="font-weight:700;color:var(--text-primary);font-size:14px;">
+              {{ task.title }}
+            </div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
+              Category: <strong style="color:var(--text-primary);">{{ task.category }}</strong>
+            </div>
+            {% if task.developer_notes %}
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;background:var(--bg-tertiary);padding:4px 8px;border-radius:var(--radius-sm);display:inline-block;">
+              💬 Developer Note: {{ task.developer_notes }}
+            </div>
+            {% endif %}
+          </td>
+
+          <!-- Affected Items -->
+          <td>
+            <span style="font-weight:700;font-size:14px;color:var(--text-primary);">
+              {{ task.item_count }}
+            </span>
+            <span style="font-size:12px;color:var(--text-secondary);">URLs / items</span>
+          </td>
+
+          <!-- Severity -->
+          <td>
+            <span class="badge badge-{{ task.severity|lower }}">
+              {{ task.severity }}
+            </span>
+          </td>
+
+          <!-- Approval info -->
+          <td style="font-size:12px;">
+            <div style="color:var(--text-primary);font-weight:600;">{{ task.approved_by or 'Admin' }}</div>
+            <div style="color:var(--text-tertiary);font-size:11px;">
+              {{ task.approved_at.strftime('%b %d, %Y %I:%M %p') if task.approved_at else '—' }}
+            </div>
+          </td>
+
+          <!-- Status -->
+          <td>
+            {% if task.status == 'verified' %}
+            <span class="badge badge-pass" title="Automated live verification passed">
+              ✅ Verified
+            </span>
+            <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px;">
+              {{ task.verified_at.strftime('%b %d, %I:%M %p') if task.verified_at else '' }}
+            </div>
+            {% elif task.status == 'completed' %}
+            <span class="badge badge-primary" title="Marked as completed by developer">
+              🛠️ Completed
+            </span>
+            <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px;">
+              Awaiting Verification
+            </div>
+            {% else %}
+            <span class="badge badge-warning">
+              ⏳ In Progress
+            </span>
+            {% endif %}
+          </td>
+
+          <!-- Actions -->
+          <td style="text-align:right;">
+            <div class="flex items-center justify-end gap-2">
+              <!-- Export Task XLSX -->
+              <a href="{{ url_for('export_pending_task', task_id=task.id) }}" class="btn btn-secondary btn-sm" title="Download Excel action items for this task">
+                📥 Export (.xlsx)
+              </a>
+
+              <!-- Mark Completed Button -->
+              {% if task.status == 'pending' %}
+              <button type="button" class="btn btn-primary btn-sm" onclick="openCompleteModal({{ task.id }}, '{{ task.title|replace("'", "\\'") }}')">
+                ✓ Mark Completed
+              </button>
+              {% endif %}
+
+              <!-- Run Verification Button -->
+              {% if task.status == 'completed' %}
+              <form method="POST" action="{{ url_for('verify_pending_task', task_id=task.id) }}" data-loading="true" style="display:inline;">
+                <button type="submit" class="btn btn-success btn-sm" style="background:var(--success);color:#fff;border:none;" title="Verify on live website">
+                  🔍 Verify Fixes
+                </button>
+              </form>
+              {% endif %}
+
+              <!-- Verification Details Modal / Badge -->
+              {% if task.status == 'verified' %}
+              <button type="button" class="btn btn-ghost btn-sm" onclick="showVerificationReport('{{ task.title|replace("'", "\\'") }}', '{{ (task.verification_details or 'Verification checks passed successfully.')|replace("\n", "\\n")|replace("'", "\\'") }}')">
+                📋 Audit Log
+              </button>
+              {% endif %}
+
+              {% if current_user.is_admin %}
+              <form method="POST" action="{{ url_for('delete_pending_task', task_id=task.id) }}" style="display:inline;" onsubmit="return confirm('Remove task {{ task.title }}?');">
+                <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--critical);" title="Delete Task">✕</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state" style="padding:60px 20px;text-align:center;">
+      <div style="font-size:44px;margin-bottom:12px;">🎉</div>
+      <div style="font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">
+        No tasks in this view
+      </div>
+      <p style="color:var(--text-secondary);max-width:450px;margin:0 auto 20px;font-size:13px;">
+        {% if status_filter != 'all' %}
+        There are currently no tasks with status "{{ status_filter }}". Check other tabs or view all tasks.
+        {% else %}
+        To create a task, navigate to any job audit report (e.g. Technical Crawl, GSC Anomalies, Product QA, Redirects) and click <strong>"Approve for Fix"</strong> on any issue category.
+        {% endif %}
+      </p>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-secondary btn-sm">← Back to Dashboard</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal: Mark Task Completed -->
+<div class="modal-backdrop" id="complete-modal" style="display:none;">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">✅ Mark Task as Completed</div>
+      <button type="button" class="modal-close" onclick="closeCompleteModal()">✕</button>
+    </div>
+    <form method="POST" id="complete-form" action="">
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+          Confirm that you or your developer have implemented the fixes for:
+          <br><strong id="modal-task-title" style="color:var(--text-primary);font-size:14px;"></strong>
+        </p>
+
+        <div class="form-group mb-4">
+          <label class="form-label">Developer / Implementation Notes (optional)</label>
+          <textarea name="notes" class="form-input" rows="3" placeholder="e.g. Added meta descriptions to all product templates in Shopify; fixed broken canonical tags in WordPress header."></textarea>
+        </div>
+
+        <div style="background:var(--primary-50);border:1px solid var(--primary-100);border-radius:var(--radius-sm);padding:12px;font-size:12px;color:var(--text-secondary);">
+          ℹ️ Once marked as Completed, you can click <strong>"Verify Fixes"</strong> to have the system automatically audit the website/tool and transition the task status to <strong>"Verified"</strong>.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeCompleteModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Confirm Completed</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Verification Details Report -->
+<div class="modal-backdrop" id="verify-report-modal" style="display:none;">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">🔍 Verification Audit Report</div>
+      <button type="button" class="modal-close" onclick="closeVerifyReportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <h4 id="report-task-title" style="margin-bottom:12px;color:var(--text-primary);"></h4>
+      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;font-family:monospace;font-size:12px;white-space:pre-wrap;max-height:300px;overflow-y:auto;color:var(--text-primary);" id="report-details-box"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeVerifyReportModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openCompleteModal(taskId, taskTitle) {
+    document.getElementById('complete-form').action = '/pending-tasks/' + taskId + '/complete';
+    document.getElementById('modal-task-title').textContent = taskTitle;
+    document.getElementById('complete-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeCompleteModal() {
+    document.getElementById('complete-modal').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  function showVerificationReport(title, details) {
+    document.getElementById('report-task-title').textContent = title;
+    document.getElementById('report-details-box').textContent = details;
+    document.getElementById('verify-report-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeVerifyReportModal() {
+    document.getElementById('verify-report-modal').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  window.addEventListener('click', (e) => {
+    const m1 = document.getElementById('complete-modal');
+    const m2 = document.getElementById('verify-report-modal');
+    if (e.target === m1) closeCompleteModal();
+    if (e.target === m2) closeVerifyReportModal();
+  });
+</script>
+{% endblock %}

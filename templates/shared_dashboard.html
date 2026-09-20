@@ -129,6 +129,20 @@
       </div>
     </div>
 
+    <!-- Flash Messages for Client Actions -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="margin-top:20px;margin-bottom:12px;">
+          {% for cat_msg, message in messages %}
+            <div style="padding:14px 18px;border-radius:var(--radius-md);margin-bottom:10px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:10px;background:{% if cat_msg == 'success' %}#ECFDF5{% else %}#EFF6FF{% endif %};border:1px solid {% if cat_msg == 'success' %}#A7F3D0{% else %}#BFDBFE{% endif %};color:{% if cat_msg == 'success' %}#065F46{% else %}#1E40AF{% endif %};">
+              <span>{% if cat_msg == 'success' %}✅{% else %}ℹ️{% endif %}</span>
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
     <!-- Overview Stats Grid -->
     <div class="stats-grid mb-6">
       <div class="stat-card">
@@ -193,6 +207,70 @@
         </div>
         <div class="job-card-date">Last audit: {{ job.latest_run.run_date.strftime('%b %d, %Y %I:%M %p') }}</div>
         {% endif %}
+
+        <!-- Client Category Approvals -->
+        <div class="job-card-categories" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+          <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+            <span>Client Action Items</span>
+            <span style="font-size:11px;color:var(--text-tertiary);">Approve to Queue</span>
+          </div>
+
+          {% if job.categories %}
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            {% for cat in job.categories[:4] %}
+            <div style="background:var(--bg-tertiary);border-radius:var(--radius-sm);padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;">
+              <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:145px;" title="{{ cat.name }}">
+                <strong style="color:var(--text-primary);">{{ cat.name }}</strong>
+                <span style="color:var(--text-tertiary);margin-left:4px;">({{ cat.count }})</span>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                {% if cat.task and cat.task.approval_status == 'approved' %}
+                  {% if cat.task.status == 'verified' %}
+                    <span class="badge badge-success" style="font-size:10px;padding:3px 7px;">✓ Verified Live</span>
+                  {% elif cat.task.status == 'completed' %}
+                    <span class="badge badge-info" style="font-size:10px;padding:3px 7px;">✓ Fixed</span>
+                  {% else %}
+                    <span class="badge badge-warning" style="font-size:10px;padding:3px 7px;">⚡ In Progress</span>
+                  {% endif %}
+                  <form method="POST" action="{{ url_for('shared_disapprove_category', token=shared.share_token) }}" style="display:inline;">
+                    <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                    <input type="hidden" name="category" value="{{ cat.name }}">
+                    <button type="submit" class="btn btn-ghost btn-sm" title="Revoke Approval" style="padding:2px 5px;font-size:10px;color:var(--danger);">✕</button>
+                  </form>
+                {% elif cat.task and cat.task.approval_status == 'disapproved' %}
+                  <span class="badge badge-secondary" style="font-size:10px;padding:3px 7px;">❌ Skipped</span>
+                  <form method="POST" action="{{ url_for('shared_approve_category', token=shared.share_token) }}" style="display:inline;">
+                    <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                    <input type="hidden" name="run_id" value="{{ cat.run_id }}">
+                    <input type="hidden" name="category" value="{{ cat.name }}">
+                    <input type="hidden" name="item_count" value="{{ cat.count }}">
+                    <input type="hidden" name="severity" value="{{ cat.severity }}">
+                    <button type="submit" class="btn btn-primary btn-sm" style="padding:2px 6px;font-size:10px;">Approve</button>
+                  </form>
+                {% else %}
+                  <form method="POST" action="{{ url_for('shared_approve_category', token=shared.share_token) }}" style="display:inline;">
+                    <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                    <input type="hidden" name="run_id" value="{{ cat.run_id }}">
+                    <input type="hidden" name="category" value="{{ cat.name }}">
+                    <input type="hidden" name="item_count" value="{{ cat.count }}">
+                    <input type="hidden" name="severity" value="{{ cat.severity }}">
+                    <button type="submit" class="btn btn-success btn-sm" title="Approve this category for fix" style="padding:3px 8px;font-size:11px;font-weight:600;">✅ Approve</button>
+                  </form>
+                  <form method="POST" action="{{ url_for('shared_disapprove_category', token=shared.share_token) }}" style="display:inline;">
+                    <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                    <input type="hidden" name="category" value="{{ cat.name }}">
+                    <button type="submit" class="btn btn-ghost btn-sm" title="Disapprove / Skip" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);">❌ Disapprove</button>
+                  </form>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div style="font-size:11px;color:var(--text-tertiary);font-style:italic;">No category issues logged.</div>
+          {% endif %}
+        </div>
       </div>
       {% endfor %}
     </div>

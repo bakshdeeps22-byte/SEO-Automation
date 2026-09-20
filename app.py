@@ -25,7 +25,7 @@ from werkzeug.utils import secure_filename
 import pandas as pd
 
 from models import db, User, Dataset, CrawlIssue, RankingAnomaly, ProductQAIssue
-from models import RedirectCheck, JobRun, SharedReport, APIConfig, WeeklySession, TrafficData
+from models import RedirectCheck, JobRun, SharedReport, APIConfig, WeeklySession, TrafficData, PendingTask
 from auth import init_auth, create_admin_user
 from config.settings import Config
 
@@ -270,6 +270,58 @@ def _get_active_dataset_path():
     return None
 
 
+def _get_job_categories_with_tasks(job_num, run_id, dataset_id=None):
+    """Retrieve categorized issue groups for a job run along with approval/task status."""
+    categories = []
+    if not run_id:
+        return categories
+    try:
+        if job_num == 1:
+            from jobs.job1_crawl_monitor import get_crawl_summary
+            s = get_crawl_summary(run_id)
+            if s and s.get('issue_type_counts'):
+                for cat, cnt in s['issue_type_counts'].items():
+                    sev = 'Critical' if ('4xx' in cat or '5xx' in cat) else ('High' if 'Title' in cat or 'Canonical' in cat else 'Medium')
+                    categories.append({'name': cat, 'count': cnt, 'severity': sev, 'job_number': 1, 'run_id': run_id})
+        elif job_num == 2:
+            from jobs.job2_gsc_monitor import get_gsc_summary
+            s = get_gsc_summary(run_id)
+            if s and s.get('alert_counts'):
+                for lvl, cnt in s['alert_counts'].items():
+                    if cnt > 0 and lvl not in ('IMPROVED', 'STABLE'):
+                        sev = 'Critical' if lvl == 'HIGH' else ('High' if lvl == 'MEDIUM' else 'Medium')
+                        categories.append({'name': f"{lvl} Ranking Anomaly", 'count': cnt, 'severity': sev, 'job_number': 2, 'run_id': run_id})
+        elif job_num == 3:
+            from jobs.job3_product_qa import get_product_qa_summary
+            s = get_product_qa_summary(run_id)
+            if s and s.get('issue_type_counts'):
+                for cat, cnt in s['issue_type_counts'].items():
+                    sev = 'High' if 'Title' in cat else 'Medium'
+                    categories.append({'name': cat, 'count': cnt, 'severity': sev, 'job_number': 3, 'run_id': run_id})
+        elif job_num == 4:
+            from jobs.job4_redirect_monitor import get_redirect_summary
+            s = get_redirect_summary(run_id)
+            if s and s.get('result_counts'):
+                for res, cnt in s['result_counts'].items():
+                    if res != 'PASS' and cnt > 0:
+                        sev = 'Critical' if res == 'CRITICAL' else 'High'
+                        categories.append({'name': f"Redirects {res}", 'count': cnt, 'severity': sev, 'job_number': 4, 'run_id': run_id})
+    except Exception as e:
+        logger.warning(f"Error fetching categories for job {job_num}, run {run_id}: {e}")
+
+    task_q = PendingTask.query.filter_by(job_number=job_num)
+    if dataset_id:
+        tasks = task_q.filter((PendingTask.dataset_id == dataset_id) | (PendingTask.dataset_id.is_(None))).all()
+    else:
+        tasks = task_q.all()
+
+    task_map = {t.category: t for t in tasks}
+    for c in categories:
+        c['task'] = task_map.get(c['name'])
+
+    return categories
+
+
 def register_routes(app):
     """Register all Flask routes."""
     
@@ -305,7 +357,7 @@ def register_routes(app):
     @app.context_processor
     def inject_account_context():
         if not current_user.is_authenticated:
-            return {'current_account': None, 'accessible_accounts': []}
+            return {'current_account': None, 'accessible_accounts': [], 'pending_tasks_count': 0}
         
         if current_user.is_superadmin:
             accessible = Dataset.query.order_by(Dataset.upload_date.desc()).all()
@@ -318,9 +370,19 @@ def register_routes(app):
                 accessible = Dataset.query.filter(Dataset.id.in_(int_ids)).order_by(Dataset.upload_date.desc()).all()
         
         current_acc = _get_active_account()
+        pending_count = 0
+        try:
+            if current_acc:
+                pending_count = PendingTask.query.filter_by(dataset_id=current_acc.id, status='pending', approval_status='approved').count()
+            else:
+                pending_count = PendingTask.query.filter_by(status='pending', approval_status='approved').count()
+        except Exception:
+            pending_count = 0
+
         return {
             'current_account': current_acc,
             'accessible_accounts': accessible,
+            'pending_tasks_count': pending_count,
         }
 
     # ── Multi-Account Switching & Creation ──────────────────────
@@ -388,11 +450,13 @@ def register_routes(app):
             else:
                 latest = query.order_by(JobRun.run_date.desc()).first()
 
+            categories = _get_job_categories_with_tasks(job_num, latest.id if latest else None, active_acc_id)
             jobs_data.append({
                 'number': job_num,
                 'name': _job_names()[job_num],
                 'icon': _job_icons()[job_num],
                 'latest_run': latest,
+                'categories': categories,
             })
         
         # Weekly sessions for chart
@@ -478,11 +542,15 @@ def register_routes(app):
             if not runs:
                 runs = JobRun.query.filter_by(job_number=1, status='completed')\
                     .order_by(JobRun.run_date.desc()).limit(20).all()
+            tasks = PendingTask.query.filter_by(job_number=1, dataset_id=active_account.id).all()
         else:
             runs = JobRun.query.filter_by(job_number=1, status='completed')\
                 .order_by(JobRun.run_date.desc()).limit(20).all()
+            tasks = PendingTask.query.filter_by(job_number=1).all()
 
-        return render_template('job1.html', summary=summary, runs=runs)
+        task_map = {t.category: t for t in tasks}
+        categories = _get_job_categories_with_tasks(1, summary['run_id'] if summary else run_id, active_account.id if active_account else None)
+        return render_template('job1.html', summary=summary, runs=runs, task_map=task_map, categories=categories)
     
     @app.route('/job/2')
     @login_required
@@ -505,11 +573,15 @@ def register_routes(app):
             if not runs:
                 runs = JobRun.query.filter_by(job_number=2, status='completed')\
                     .order_by(JobRun.run_date.desc()).limit(20).all()
+            tasks = PendingTask.query.filter_by(job_number=2, dataset_id=active_account.id).all()
         else:
             runs = JobRun.query.filter_by(job_number=2, status='completed')\
                 .order_by(JobRun.run_date.desc()).limit(20).all()
+            tasks = PendingTask.query.filter_by(job_number=2).all()
 
-        return render_template('job2.html', summary=summary, runs=runs)
+        task_map = {t.category: t for t in tasks}
+        categories = _get_job_categories_with_tasks(2, summary['run_id'] if summary else run_id, active_account.id if active_account else None)
+        return render_template('job2.html', summary=summary, runs=runs, task_map=task_map, categories=categories)
     
     @app.route('/job/3')
     @login_required
@@ -532,11 +604,15 @@ def register_routes(app):
             if not runs:
                 runs = JobRun.query.filter_by(job_number=3, status='completed')\
                     .order_by(JobRun.run_date.desc()).limit(20).all()
+            tasks = PendingTask.query.filter_by(job_number=3, dataset_id=active_account.id).all()
         else:
             runs = JobRun.query.filter_by(job_number=3, status='completed')\
                 .order_by(JobRun.run_date.desc()).limit(20).all()
+            tasks = PendingTask.query.filter_by(job_number=3).all()
 
-        return render_template('job3.html', summary=summary, runs=runs)
+        task_map = {t.category: t for t in tasks}
+        categories = _get_job_categories_with_tasks(3, summary['run_id'] if summary else run_id, active_account.id if active_account else None)
+        return render_template('job3.html', summary=summary, runs=runs, task_map=task_map, categories=categories)
     
     @app.route('/job/4')
     @login_required
@@ -559,11 +635,15 @@ def register_routes(app):
             if not runs:
                 runs = JobRun.query.filter_by(job_number=4, status='completed')\
                     .order_by(JobRun.run_date.desc()).limit(20).all()
+            tasks = PendingTask.query.filter_by(job_number=4, dataset_id=active_account.id).all()
         else:
             runs = JobRun.query.filter_by(job_number=4, status='completed')\
                 .order_by(JobRun.run_date.desc()).limit(20).all()
+            tasks = PendingTask.query.filter_by(job_number=4).all()
 
-        return render_template('job4.html', summary=summary, runs=runs)
+        task_map = {t.category: t for t in tasks}
+        categories = _get_job_categories_with_tasks(4, summary['run_id'] if summary else run_id, active_account.id if active_account else None)
+        return render_template('job4.html', summary=summary, runs=runs, task_map=task_map, categories=categories)
     
     # ── Job Triggers ────────────────────────────────────────────
     
@@ -1021,13 +1101,21 @@ def register_routes(app):
         if shared.report_type == 'dashboard' or not shared.job_number:
             jobs_data = []
             for job_num in range(1, 5):
-                latest = JobRun.query.filter_by(job_number=job_num, status='completed')\
-                    .order_by(JobRun.run_date.desc()).first()
+                query = JobRun.query.filter_by(job_number=job_num, status='completed')
+                if shared.dataset_id:
+                    latest = query.filter_by(dataset_id=shared.dataset_id).order_by(JobRun.run_date.desc()).first()
+                    if not latest:
+                        latest = query.order_by(JobRun.run_date.desc()).first()
+                else:
+                    latest = query.order_by(JobRun.run_date.desc()).first()
+
+                categories = _get_job_categories_with_tasks(job_num, latest.id if latest else None, shared.dataset_id)
                 jobs_data.append({
                     'number': job_num,
                     'name': _job_names()[job_num],
                     'icon': _job_icons()[job_num],
                     'latest_run': latest,
+                    'categories': categories,
                 })
             
             if shared.dataset_id:
@@ -1071,8 +1159,10 @@ def register_routes(app):
             from jobs.job4_redirect_monitor import get_redirect_summary
             data = get_redirect_summary(shared.run_id)
         
+        categories = _get_job_categories_with_tasks(shared.job_number, shared.run_id, shared.dataset_id)
         return render_template('shared_report.html',
             shared=shared, job_run=job_run, data=data,
+            categories=categories,
             job_name=_job_names().get(shared.job_number, 'Report'),
         )
     
@@ -1337,8 +1427,269 @@ def register_routes(app):
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-    
-    # ── API Endpoints for Charts ────────────────────────────────
+    # ── Category Approvals & Task Workflow ──────────────────────
+
+    @app.route('/category/approve', methods=['POST'])
+    @login_required
+    def approve_category():
+        job_number = request.form.get('job_number', type=int)
+        run_id = request.form.get('run_id', type=int)
+        category = request.form.get('category', '').strip()
+        item_count = request.form.get('item_count', type=int, default=1)
+        severity = request.form.get('severity', 'High').strip()
+        custom_title = request.form.get('title', '').strip()
+
+        if not category or not job_number:
+            flash('Invalid category or job specification.', 'error')
+            return redirect(request.referrer or url_for('dashboard'))
+
+        active_account = _get_active_account()
+        dataset_id = active_account.id if active_account else None
+        client_name = active_account.client_name if (active_account and active_account.client_name) else 'NuroSparx'
+
+        task = PendingTask.query.filter_by(
+            dataset_id=dataset_id,
+            job_number=job_number,
+            category=category
+        ).first()
+
+        title = custom_title or f"Fix {category} ({item_count} items)"
+
+        if not task:
+            task = PendingTask(
+                dataset_id=dataset_id,
+                client_name=client_name,
+                job_number=job_number,
+                run_id=run_id,
+                category=category,
+                title=title,
+                description=f"Actionable fix for {item_count} items in category '{category}' identified during {_job_names().get(job_number, 'Audit')}.",
+                item_count=item_count,
+                severity=severity,
+                approval_status='approved',
+                status='pending',
+                approved_by=current_user.username,
+                approved_at=datetime.now(timezone.utc),
+            )
+            db.session.add(task)
+        else:
+            task.approval_status = 'approved'
+            task.status = 'pending'
+            task.item_count = item_count
+            task.severity = severity
+            task.run_id = run_id or task.run_id
+            task.approved_by = current_user.username
+            task.approved_at = datetime.now(timezone.utc)
+
+        db.session.commit()
+        flash(f'Category "{category}" approved! Moved to Pending Tasks for implementation.', 'success')
+        return redirect(request.form.get('next') or request.referrer or url_for('pending_tasks'))
+
+    @app.route('/category/disapprove', methods=['POST'])
+    @login_required
+    def disapprove_category():
+        job_number = request.form.get('job_number', type=int)
+        category = request.form.get('category', '').strip()
+
+        active_account = _get_active_account()
+        dataset_id = active_account.id if active_account else None
+
+        task = PendingTask.query.filter_by(
+            dataset_id=dataset_id,
+            job_number=job_number,
+            category=category
+        ).first()
+
+        if task:
+            task.approval_status = 'disapproved'
+            db.session.commit()
+
+        flash(f'Category "{category}" marked as Disapproved / Skipped. Stays in job dashboard.', 'info')
+        return redirect(request.referrer or url_for('dashboard'))
+
+    @app.route('/shared/category/approve/<token>', methods=['POST'])
+    def shared_approve_category(token):
+        shared = SharedReport.query.filter_by(share_token=token, is_active=True).first_or_404()
+        job_number = request.form.get('job_number', type=int, default=1)
+        run_id = request.form.get('run_id', type=int, default=shared.run_id)
+        category = request.form.get('category', '').strip()
+        item_count = request.form.get('item_count', type=int, default=1)
+        severity = request.form.get('severity', 'High').strip()
+
+        if not category:
+            flash('Invalid category.', 'error')
+            return redirect(request.referrer or url_for('view_shared', token=token))
+
+        client_name = shared.client_name or 'Client'
+        dataset_id = shared.dataset_id
+
+        task = PendingTask.query.filter_by(
+            dataset_id=dataset_id,
+            job_number=job_number,
+            category=category
+        ).first()
+
+        title = f"Fix {category} ({item_count} items)"
+
+        if not task:
+            task = PendingTask(
+                dataset_id=dataset_id,
+                client_name=client_name,
+                job_number=job_number,
+                run_id=run_id,
+                category=category,
+                title=title,
+                description=f"Actionable fix approved by Client ({client_name}) for '{category}'.",
+                item_count=item_count,
+                severity=severity,
+                approval_status='approved',
+                status='pending',
+                approved_by=f"Client ({client_name})",
+                approved_at=datetime.now(timezone.utc),
+            )
+            db.session.add(task)
+        else:
+            task.approval_status = 'approved'
+            task.status = 'pending'
+            task.approved_by = f"Client ({client_name})"
+            task.approved_at = datetime.now(timezone.utc)
+
+        db.session.commit()
+        flash(f'Category "{category}" approved for implementation! The SEO development team has been queued.', 'success')
+        return redirect(request.referrer or url_for('view_shared', token=token))
+
+    @app.route('/shared/category/disapprove/<token>', methods=['POST'])
+    def shared_disapprove_category(token):
+        shared = SharedReport.query.filter_by(share_token=token, is_active=True).first_or_404()
+        job_number = request.form.get('job_number', type=int, default=1)
+        category = request.form.get('category', '').strip()
+
+        task = PendingTask.query.filter_by(
+            dataset_id=shared.dataset_id,
+            job_number=job_number,
+            category=category
+        ).first()
+
+        if task:
+            task.approval_status = 'disapproved'
+            db.session.commit()
+
+        flash(f'Category "{category}" marked as Disapproved / Skipped.', 'info')
+        return redirect(request.referrer or url_for('view_shared', token=token))
+
+    # ── Pending Tasks Dashboard ─────────────────────────────────
+
+    @app.route('/pending-tasks')
+    @login_required
+    def pending_tasks():
+        active_account = _get_active_account()
+        active_acc_id = active_account.id if active_account else None
+
+        status_filter = request.args.get('status', 'all')
+        job_filter = request.args.get('job', type=int)
+
+        query = PendingTask.query
+        if active_acc_id:
+            query = query.filter_by(dataset_id=active_acc_id)
+
+        if status_filter in ('pending', 'completed', 'verified'):
+            query = query.filter_by(status=status_filter)
+        elif status_filter == 'disapproved':
+            query = query.filter_by(approval_status='disapproved')
+        else:
+            query = query.filter(PendingTask.approval_status != 'disapproved')
+
+        if job_filter:
+            query = query.filter_by(job_number=job_filter)
+
+        tasks = query.order_by(
+            PendingTask.status.asc(),
+            PendingTask.id.desc()
+        ).all()
+
+        base_q = PendingTask.query
+        if active_acc_id:
+            base_q = base_q.filter_by(dataset_id=active_acc_id)
+
+        pending_count = base_q.filter_by(status='pending', approval_status='approved').count()
+        completed_count = base_q.filter_by(status='completed').count()
+        verified_count = base_q.filter_by(status='verified').count()
+
+        return render_template('pending_tasks.html',
+            tasks=tasks,
+            active_dataset=active_account,
+            status_filter=status_filter,
+            job_filter=job_filter,
+            pending_count=pending_count,
+            completed_count=completed_count,
+            verified_count=verified_count,
+            job_names=_job_names(),
+        )
+
+    @app.route('/pending-tasks/<int:task_id>/complete', methods=['POST'])
+    @login_required
+    def complete_pending_task(task_id):
+        task = PendingTask.query.get_or_404(task_id)
+        if task.dataset_id and not current_user.has_project_access(task.dataset_id):
+            abort(403)
+
+        notes = request.form.get('notes', '').strip()
+        task.status = 'completed'
+        task.completed_by = current_user.username
+        task.completed_at = datetime.now(timezone.utc)
+        if notes:
+            task.developer_notes = notes
+
+        db.session.commit()
+        flash(f'Task "{task.title}" marked as Completed! Ready for automated live verification.', 'success')
+        return redirect(request.referrer or url_for('pending_tasks'))
+
+    @app.route('/pending-tasks/<int:task_id>/verify', methods=['POST'])
+    @login_required
+    def verify_pending_task(task_id):
+        task = PendingTask.query.get_or_404(task_id)
+        if task.dataset_id and not current_user.has_project_access(task.dataset_id):
+            abort(403)
+
+        from services.verification_service import verify_task_on_website
+        result = verify_task_on_website(task.id)
+
+        if result['success']:
+            flash(f"🎉 Verification Succeeded: {result['details']} Task status changed to VERIFIED!", 'success')
+        else:
+            flash(f"⚠️ Verification Alert: {result['details']}", 'warning')
+
+        return redirect(request.referrer or url_for('pending_tasks'))
+
+    @app.route('/pending-tasks/<int:task_id>/export')
+    @login_required
+    def export_pending_task(task_id):
+        task = PendingTask.query.get_or_404(task_id)
+        if task.dataset_id and not current_user.has_project_access(task.dataset_id):
+            abort(403)
+
+        from services.export_service import export_task_issues
+        bio = export_task_issues(task.id)
+        slug = secure_filename(task.category.lower().replace(' ', '_'))
+        date_str = datetime.now(timezone.utc).strftime('%Y%m%d')
+
+        return send_file(
+            bio,
+            as_attachment=True,
+            download_name=f"Task_{task.id}_{slug}_{date_str}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    @app.route('/pending-tasks/<int:task_id>/delete', methods=['POST'])
+    @admin_required
+    def delete_pending_task(task_id):
+        task = PendingTask.query.get_or_404(task_id)
+        name = task.title
+        db.session.delete(task)
+        db.session.commit()
+        flash(f'Task "{name}" removed.', 'info')
+        return redirect(request.referrer or url_for('pending_tasks'))
+
     
     @app.route('/api/dashboard-data')
     @login_required

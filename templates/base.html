@@ -50,6 +50,13 @@
             <span class="nav-item-icon">🔗</span>
             Redirect Monitor
           </a>
+          <a href="{{ url_for('pending_tasks') }}" class="nav-item {% if request.endpoint == 'pending_tasks' %}active{% endif %}">
+            <span class="nav-item-icon">📋</span>
+            Pending Tasks
+            {% if pending_tasks_count and pending_tasks_count > 0 %}
+            <span class="badge badge-warning" style="margin-left:auto;font-size:10px;padding:2px 7px;">{{ pending_tasks_count }}</span>
+            {% endif %}
+          </a>
         </div>
 
         {% if current_user.is_admin %}

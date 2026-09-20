@@ -27,7 +27,93 @@
     </div>
 
     <div class="shared-content">
+      <!-- Flash Messages for Client Actions -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div style="margin-bottom:16px;">
+            {% for cat_msg, message in messages %}
+              <div style="padding:14px 18px;border-radius:var(--radius-md);margin-bottom:10px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:10px;background:{% if cat_msg == 'success' %}#ECFDF5{% else %}#EFF6FF{% endif %};border:1px solid {% if cat_msg == 'success' %}#A7F3D0{% else %}#BFDBFE{% endif %};color:{% if cat_msg == 'success' %}#065F46{% else %}#1E40AF{% endif %};">
+                <span>{% if cat_msg == 'success' %}✅{% else %}ℹ️{% endif %}</span>
+                <span>{{ message }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
       {% if data %}
+
+      <!-- Category Review & Approval for Client -->
+      {% if categories %}
+      <div class="card mt-4" style="border:1px solid var(--primary-100);background:#FAFAFE;">
+        <div class="card-header flex items-center justify-between" style="padding:14px 20px;border-bottom:1px solid var(--border);">
+          <div>
+            <span class="card-title" style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;">
+              ✅ Client Approval & Prioritization
+            </span>
+            <p style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
+              Approve categories below to authorize the SEO development team to execute fixes.
+            </p>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:12px;padding:16px;">
+          {% for cat in categories %}
+          <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="badge badge-{{ cat.severity|lower }}">{{ cat.severity }}</span>
+                <span style="font-size:12px;font-weight:700;color:var(--text-primary);">{{ cat.count }} items</span>
+              </div>
+              <div style="font-weight:700;font-size:13px;color:var(--text-primary);margin-top:4px;">
+                {{ cat.name }}
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:6px;padding-top:8px;border-top:1px solid rgba(0,0,0,0.06);">
+              {% if cat.task and cat.task.approval_status == 'approved' %}
+                {% if cat.task.status == 'verified' %}
+                  <span class="badge badge-success" style="font-size:11px;padding:3px 8px;">✓ Verified Live</span>
+                {% elif cat.task.status == 'completed' %}
+                  <span class="badge badge-info" style="font-size:11px;padding:3px 8px;">✓ Fix Completed</span>
+                {% else %}
+                  <span class="badge badge-warning" style="font-size:11px;padding:3px 8px;">⚡ Approved & In Queue</span>
+                {% endif %}
+                <form method="POST" action="{{ url_for('shared_disapprove_category', token=shared.share_token) }}" style="margin-left:auto;">
+                  <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                  <input type="hidden" name="category" value="{{ cat.name }}">
+                  <button type="submit" class="btn btn-ghost btn-sm" title="Revoke" style="padding:2px 6px;font-size:10px;color:var(--danger);">✕</button>
+                </form>
+              {% elif cat.task and cat.task.approval_status == 'disapproved' %}
+                <span class="badge badge-secondary" style="font-size:11px;padding:3px 8px;">❌ Skipped</span>
+                <form method="POST" action="{{ url_for('shared_approve_category', token=shared.share_token) }}" style="margin-left:auto;">
+                  <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                  <input type="hidden" name="run_id" value="{{ cat.run_id }}">
+                  <input type="hidden" name="category" value="{{ cat.name }}">
+                  <input type="hidden" name="item_count" value="{{ cat.count }}">
+                  <input type="hidden" name="severity" value="{{ cat.severity }}">
+                  <button type="submit" class="btn btn-primary btn-sm" style="padding:2px 8px;font-size:11px;">Approve</button>
+                </form>
+              {% else %}
+                <form method="POST" action="{{ url_for('shared_approve_category', token=shared.share_token) }}" style="flex:1;">
+                  <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                  <input type="hidden" name="run_id" value="{{ cat.run_id }}">
+                  <input type="hidden" name="category" value="{{ cat.name }}">
+                  <input type="hidden" name="item_count" value="{{ cat.count }}">
+                  <input type="hidden" name="severity" value="{{ cat.severity }}">
+                  <button type="submit" class="btn btn-success btn-sm" style="width:100%;font-size:11px;font-weight:600;padding:4px 8px;">✅ Approve</button>
+                </form>
+                <form method="POST" action="{{ url_for('shared_disapprove_category', token=shared.share_token) }}" style="flex:1;">
+                  <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                  <input type="hidden" name="category" value="{{ cat.name }}">
+                  <button type="submit" class="btn btn-ghost btn-sm" style="width:100%;font-size:11px;border:1px solid var(--border);color:var(--text-secondary);padding:4px 8px;">❌ Skip</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
 
       <!-- Summary Stats -->
       {% if shared.job_number == 1 %}

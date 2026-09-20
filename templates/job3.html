@@ -47,6 +47,85 @@
   </div>
 </div>
 
+<!-- Category Approval & Work Dispatch -->
+<div class="card mb-6" id="category-approvals">
+  <div class="card-header flex items-center justify-between" style="padding:16px 20px;border-bottom:1px solid var(--border);">
+    <div>
+      <span class="card-title" style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
+        🗂️ Product Metadata QA Approvals & Work Dispatch
+      </span>
+      <p style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
+        Approve metadata issue categories to dispatch copy & SEO fixes to <strong>Pending Tasks</strong>. Disapproved categories remain in QA review.
+      </p>
+    </div>
+    <a href="{{ url_for('pending_tasks') }}" class="btn btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:6px;">
+      📋 View Pending Tasks <span class="badge badge-primary">{{ pending_tasks_count }}</span>
+    </a>
+  </div>
+
+  <div class="category-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));gap:14px;padding:18px;">
+    {% for cat in categories %}
+    <div class="category-card" style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px;display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <span class="badge badge-{{ cat.severity|lower }}">{{ cat.severity }}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--text-primary);">{{ cat.count }} items</span>
+        </div>
+        <div style="font-weight:700;font-size:14px;color:var(--text-primary);margin-top:6px;">
+          {{ cat.name }}
+        </div>
+      </div>
+
+      <div class="category-card-actions" style="display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.06);">
+        {% if cat.task and cat.task.approval_status == 'approved' %}
+          {% if cat.task.status == 'verified' %}
+            <span class="badge badge-success" style="padding:6px 12px;font-size:12px;">✓ Verified Live</span>
+          {% elif cat.task.status == 'completed' %}
+            <span class="badge badge-info" style="padding:6px 12px;font-size:12px;">✓ Completed</span>
+          {% else %}
+            <span class="badge badge-warning" style="padding:6px 12px;font-size:12px;">⚡ In Pending Tasks</span>
+          {% endif %}
+          <a href="{{ url_for('pending_tasks') }}" class="btn btn-ghost btn-sm" style="margin-left:auto;font-size:11px;">View Task →</a>
+          <form method="POST" action="{{ url_for('disapprove_category') }}" style="display:inline;">
+            <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+            <input type="hidden" name="category" value="{{ cat.name }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <button type="submit" class="btn btn-ghost btn-sm" title="Revoke / Disapprove" style="color:var(--danger);padding:4px 6px;">✕</button>
+          </form>
+        {% elif cat.task and cat.task.approval_status == 'disapproved' %}
+          <span class="badge badge-secondary" style="padding:6px 10px;font-size:12px;">❌ Disapproved</span>
+          <form method="POST" action="{{ url_for('approve_category') }}" style="margin-left:auto;">
+            <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+            <input type="hidden" name="run_id" value="{{ cat.run_id }}">
+            <input type="hidden" name="category" value="{{ cat.name }}">
+            <input type="hidden" name="item_count" value="{{ cat.count }}">
+            <input type="hidden" name="severity" value="{{ cat.severity }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <button type="submit" class="btn btn-primary btn-sm" style="font-size:12px;">Re-Approve</button>
+          </form>
+        {% else %}
+          <form method="POST" action="{{ url_for('approve_category') }}" style="flex:1;">
+            <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+            <input type="hidden" name="run_id" value="{{ cat.run_id }}">
+            <input type="hidden" name="category" value="{{ cat.name }}">
+            <input type="hidden" name="item_count" value="{{ cat.count }}">
+            <input type="hidden" name="severity" value="{{ cat.severity }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <button type="submit" class="btn btn-success btn-sm" style="width:100%;font-size:12px;font-weight:600;">✅ Approve</button>
+          </form>
+          <form method="POST" action="{{ url_for('disapprove_category') }}" style="flex:1;">
+            <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+            <input type="hidden" name="category" value="{{ cat.name }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            <button type="submit" class="btn btn-ghost btn-sm" style="width:100%;font-size:12px;border:1px solid var(--border);color:var(--text-secondary);">❌ Disapprove</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
 <!-- Bulk Approve Form -->
 {% set pending_issues = summary.issues|selectattr('status', 'equalto', 'pending')|list %}
 {% if pending_issues %}

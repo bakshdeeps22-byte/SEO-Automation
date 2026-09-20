@@ -250,3 +250,34 @@ class TrafficData(db.Model):
     sessions_current = db.Column(db.Integer, default=0)
     change_pct = db.Column(db.Float, default=0)
     dataset_id = db.Column(db.Integer, db.ForeignKey('datasets.id'))
+
+
+class PendingTask(db.Model):
+    """Actionable SEO tasks generated from approved issue categories."""
+    __tablename__ = 'pending_tasks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    dataset_id = db.Column(db.Integer, db.ForeignKey('datasets.id'), nullable=True)
+    client_name = db.Column(db.String(120), default='NuroSparx')
+    job_number = db.Column(db.Integer, nullable=False)
+    run_id = db.Column(db.Integer, db.ForeignKey('job_runs.id'), nullable=True)
+    category = db.Column(db.String(255), nullable=False)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    item_count = db.Column(db.Integer, default=0)
+    severity = db.Column(db.String(20), default='High')  # Critical, High, Medium, Low
+    approval_status = db.Column(db.String(30), default='approved')  # approved, disapproved, unreviewed
+    status = db.Column(db.String(30), default='pending')  # pending (To Do), completed, verified
+    approved_by = db.Column(db.String(80))
+    approved_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    completed_by = db.Column(db.String(80))
+    completed_at = db.Column(db.DateTime)
+    developer_notes = db.Column(db.Text)
+    verified_at = db.Column(db.DateTime)
+    verification_method = db.Column(db.String(50))
+    verification_details = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    dataset = db.relationship('Dataset', backref='pending_tasks')
+    job_run = db.relationship('JobRun', backref='pending_tasks')
+

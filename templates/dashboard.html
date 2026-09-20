@@ -97,40 +97,112 @@
 <!-- Job Cards -->
 <div class="jobs-grid">
   {% for job in jobs %}
-  <a href="{{ url_for('job' ~ job.number ~ '_detail') }}" class="job-card" style="text-decoration:none;color:inherit;">
-    <div class="job-card-header">
-      <span class="job-card-icon">{{ job.icon }}</span>
+  <div class="job-card" style="display:flex;flex-direction:column;justify-content:space-between;">
+    <div>
+      <div class="job-card-header">
+        <span class="job-card-icon">{{ job.icon }}</span>
+        {% if job.latest_run %}
+        <span class="job-card-status completed">● Completed</span>
+        {% else %}
+        <span class="job-card-status not-run">○ Not run yet</span>
+        {% endif %}
+      </div>
+      <div class="job-card-title">
+        <a href="{{ url_for('job' ~ job.number ~ '_detail') }}" style="color:inherit;text-decoration:none;">{{ job.name }}</a>
+      </div>
+      <div class="job-card-description">
+        {% if job.number == 1 %}Technical SEO health checks across all crawled URLs{% endif %}
+        {% if job.number == 2 %}GSC query ranking changes with anomaly detection{% endif %}
+        {% if job.number == 3 %}Product page metadata quality with AI suggestions{% endif %}
+        {% if job.number == 4 %}Redirect chain validation for migration monitoring{% endif %}
+      </div>
       {% if job.latest_run %}
-      <span class="job-card-status completed">● Completed</span>
-      {% else %}
-      <span class="job-card-status not-run">○ Not run yet</span>
+      <div class="job-card-stats">
+        <div class="job-card-stat">
+          <div class="job-card-stat-value">{{ job.latest_run.issues_found }}</div>
+          <div class="job-card-stat-label">Issues</div>
+        </div>
+        <div class="job-card-stat">
+          <div class="job-card-stat-value">{{ job.latest_run.critical_count }}</div>
+          <div class="job-card-stat-label">Critical</div>
+        </div>
+        <div class="job-card-stat">
+          <div class="job-card-stat-value">{{ "%.1f"|format(job.latest_run.duration_seconds) }}s</div>
+          <div class="job-card-stat-label">Duration</div>
+        </div>
+      </div>
+      <div class="job-card-date">Last run: {{ job.latest_run.run_date.strftime('%b %d, %Y %I:%M %p') }}</div>
       {% endif %}
     </div>
-    <div class="job-card-title">{{ job.name }}</div>
-    <div class="job-card-description">
-      {% if job.number == 1 %}Technical SEO health checks across all crawled URLs{% endif %}
-      {% if job.number == 2 %}GSC query ranking changes with anomaly detection{% endif %}
-      {% if job.number == 3 %}Product page metadata quality with AI suggestions{% endif %}
-      {% if job.number == 4 %}Redirect chain validation for migration monitoring{% endif %}
+
+    <!-- Category Approval Buttons inside Job Card -->
+    <div class="job-card-categories" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+        <span>Issue Categories</span>
+        <a href="{{ url_for('job' ~ job.number ~ '_detail') }}" style="font-size:11px;color:var(--primary);text-decoration:none;font-weight:600;">View All →</a>
+      </div>
+
+      {% if job.categories %}
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        {% for cat in job.categories[:3] %}
+        <div style="background:var(--bg-tertiary);border-radius:var(--radius-sm);padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;">
+          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:135px;" title="{{ cat.name }}">
+            <strong style="color:var(--text-primary);">{{ cat.name }}</strong>
+            <span style="color:var(--text-tertiary);margin-left:4px;">({{ cat.count }})</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+            {% if cat.task and cat.task.approval_status == 'approved' %}
+              {% if cat.task.status == 'verified' %}
+                <span class="badge badge-success" style="font-size:10px;padding:2px 6px;">✓ Verified</span>
+              {% elif cat.task.status == 'completed' %}
+                <span class="badge badge-info" style="font-size:10px;padding:2px 6px;">✓ Done</span>
+              {% else %}
+                <span class="badge badge-warning" style="font-size:10px;padding:2px 6px;">⚡ In Tasks</span>
+              {% endif %}
+              <form method="POST" action="{{ url_for('disapprove_category') }}" style="display:inline;">
+                <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                <input type="hidden" name="category" value="{{ cat.name }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <button type="submit" class="btn btn-ghost btn-sm" title="Revoke / Disapprove" style="padding:2px 5px;font-size:10px;color:var(--danger);">✕</button>
+              </form>
+            {% elif cat.task and cat.task.approval_status == 'disapproved' %}
+              <span class="badge badge-secondary" style="font-size:10px;padding:2px 6px;">❌ Skipped</span>
+              <form method="POST" action="{{ url_for('approve_category') }}" style="display:inline;">
+                <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                <input type="hidden" name="run_id" value="{{ cat.run_id }}">
+                <input type="hidden" name="category" value="{{ cat.name }}">
+                <input type="hidden" name="item_count" value="{{ cat.count }}">
+                <input type="hidden" name="severity" value="{{ cat.severity }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <button type="submit" class="btn btn-primary btn-sm" style="padding:2px 6px;font-size:10px;">Approve</button>
+              </form>
+            {% else %}
+              <form method="POST" action="{{ url_for('approve_category') }}" style="display:inline;">
+                <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                <input type="hidden" name="run_id" value="{{ cat.run_id }}">
+                <input type="hidden" name="category" value="{{ cat.name }}">
+                <input type="hidden" name="item_count" value="{{ cat.count }}">
+                <input type="hidden" name="severity" value="{{ cat.severity }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <button type="submit" class="btn btn-success btn-sm" title="Approve for Pending Tasks" style="padding:2px 7px;font-size:11px;">✅ Approve</button>
+              </form>
+              <form method="POST" action="{{ url_for('disapprove_category') }}" style="display:inline;">
+                <input type="hidden" name="job_number" value="{{ cat.job_number }}">
+                <input type="hidden" name="category" value="{{ cat.name }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <button type="submit" class="btn btn-ghost btn-sm" title="Disapprove / Skip" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);">❌ Disapprove</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="font-size:11px;color:var(--text-tertiary);font-style:italic;">Run audit to view categories.</div>
+      {% endif %}
     </div>
-    {% if job.latest_run %}
-    <div class="job-card-stats">
-      <div class="job-card-stat">
-        <div class="job-card-stat-value">{{ job.latest_run.issues_found }}</div>
-        <div class="job-card-stat-label">Issues</div>
-      </div>
-      <div class="job-card-stat">
-        <div class="job-card-stat-value">{{ job.latest_run.critical_count }}</div>
-        <div class="job-card-stat-label">Critical</div>
-      </div>
-      <div class="job-card-stat">
-        <div class="job-card-stat-value">{{ "%.1f"|format(job.latest_run.duration_seconds) }}s</div>
-        <div class="job-card-stat-label">Duration</div>
-      </div>
-    </div>
-    <div class="job-card-date">Last run: {{ job.latest_run.run_date.strftime('%b %d, %Y %I:%M %p') }}</div>
-    {% endif %}
-  </a>
+  </div>
   {% endfor %}
 </div>
 

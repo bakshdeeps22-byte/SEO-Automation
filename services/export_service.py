@@ -14,7 +14,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from models import db, CrawlIssue, RankingAnomaly, ProductQAIssue, RedirectCheck, JobRun, Dataset
+from models import db, CrawlIssue, RankingAnomaly, ProductQAIssue, RedirectCheck, JobRun, Dataset, PendingTask
 
 # Styling constants
 HEADER_FILL = PatternFill(start_color="312E81", end_color="312E81", fill_type="solid")
@@ -463,3 +463,149 @@ def export_full_dashboard(dataset_id=None, client_name="NuroSparx"):
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+def export_task_issues(task_id):
+    """Export task-specific issues for developer/SEO executive action.
+    
+    Args:
+        task_id: PendingTask ID.
+        
+    Returns:
+        io.BytesIO Excel workbook buffer.
+    """
+    task = PendingTask.query.get_or_404(task_id)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Task Action Items"
+    ws.views.sheetView[0].showGridLines = True
+
+    # Title block
+    ws["A1"] = f"{task.client_name} — Task: {task.title}"
+    ws["A1"].font = TITLE_FONT
+    appr_str = f"Approved by: {task.approved_by or 'Admin'} ({task.approved_at.strftime('%b %d, %Y') if task.approved_at else '—'})"
+    ws["A2"] = f"Category: {task.category} | Severity: {task.severity} | Status: {task.status.upper()} | {appr_str}"
+    ws["A2"].font = SUBTITLE_FONT
+
+    if task.job_number == 1:
+        headers = ["URL", "Page Template", "Issue Category", "Severity", "Priority", "Why It Matters", "Recommended Fix", "Developer Status", "Developer Notes"]
+        ws.append([])
+        ws.append(headers)
+        _apply_header_styles(ws, 4)
+
+        issues = CrawlIssue.query.filter_by(run_id=task.run_id, issue=task.category).all()
+        if not issues:
+            issues = CrawlIssue.query.filter_by(issue=task.category).all()
+
+        for idx, issue in enumerate(issues, start=5):
+            ws.append([
+                issue.url,
+                issue.template or "",
+                issue.issue,
+                issue.severity,
+                issue.priority_score,
+                issue.why_it_matters or "",
+                issue.recommended_action or "",
+                "Pending Fix" if task.status == "pending" else task.status.capitalize(),
+                task.developer_notes or "",
+            ])
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=idx, column=col_idx)
+                cell.border = THIN_BORDER
+                cell.font = REGULAR_FONT
+                if col_idx == 1:
+                    cell.font = URL_FONT
+                    cell.hyperlink = issue.url
+
+    elif task.job_number == 3:
+        headers = ["Product Name", "Product URL", "Issue Type", "Current Value", "Suggested AI Value", "Status", "Developer Notes"]
+        ws.append([])
+        ws.append(headers)
+        _apply_header_styles(ws, 4)
+
+        items = ProductQAIssue.query.filter_by(run_id=task.run_id, issue_type=task.category).all()
+        if not items:
+            items = ProductQAIssue.query.filter_by(issue_type=task.category).all()
+
+        for idx, itm in enumerate(items, start=5):
+            ws.append([
+                itm.product_name or "",
+                itm.url,
+                itm.issue_type,
+                itm.current_value or "",
+                itm.suggested_value or "",
+                itm.status or "Pending",
+                task.developer_notes or "",
+            ])
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=idx, column=col_idx)
+                cell.border = THIN_BORDER
+                cell.font = REGULAR_FONT
+
+    elif task.job_number == 4:
+        headers = ["Old URL (Redirect Source)", "Target URL", "Status Code", "Redirect Chain", "Final Destination", "Validation Result", "Developer Notes"]
+        ws.append([])
+        ws.append(headers)
+        _apply_header_styles(ws, 4)
+
+        checks = RedirectCheck.query.filter_by(run_id=task.run_id).all()
+        if not checks:
+            checks = RedirectCheck.query.all()
+        if 'CRITICAL' in task.category.upper():
+            checks = [c for c in checks if c.pass_fail == 'CRITICAL']
+        elif 'WARNING' in task.category.upper():
+            checks = [c for c in checks if c.pass_fail == 'WARNING']
+
+        for idx, chk in enumerate(checks, start=5):
+            ws.append([
+                chk.old_url,
+                chk.expected_url or "",
+                chk.actual_status or chk.expected_status,
+                f"{chk.redirect_hops} hops",
+                chk.actual_final_url or "",
+                chk.pass_fail,
+                task.developer_notes or "",
+            ])
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=idx, column=col_idx)
+                cell.border = THIN_BORDER
+                cell.font = REGULAR_FONT
+
+    else:
+        headers = ["Query / Item", "Alert Category", "Previous Value", "Current Value", "Change", "Status", "Developer Notes"]
+        ws.append([])
+        ws.append(headers)
+        _apply_header_styles(ws, 4)
+
+        anomalies = RankingAnomaly.query.filter_by(run_id=task.run_id).all()
+        if not anomalies:
+            anomalies = RankingAnomaly.query.all()
+        if 'HIGH' in task.category.upper():
+            anomalies = [a for a in anomalies if a.alert_level == 'HIGH']
+        elif 'MEDIUM' in task.category.upper():
+            anomalies = [a for a in anomalies if a.alert_level == 'MEDIUM']
+        elif 'WATCH' in task.category.upper():
+            anomalies = [a for a in anomalies if a.alert_level == 'WATCH']
+
+        for idx, a in enumerate(anomalies, start=5):
+            ws.append([
+                a.query,
+                a.alert_level,
+                a.clicks_previous,
+                a.clicks_current,
+                f"{round(a.clicks_change_pct, 1)}%",
+                task.status.capitalize(),
+                task.developer_notes or "",
+            ])
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=idx, column=col_idx)
+                cell.border = THIN_BORDER
+                cell.font = REGULAR_FONT
+
+    _auto_fit_columns(ws)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
