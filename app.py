@@ -16,7 +16,8 @@ from functools import wraps
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, send_from_directory, session, abort, send_file
+    flash, jsonify, send_from_directory, session, abort, send_file,
+    Response, stream_with_context
 )
 from flask_login import (
     login_user, logout_user, login_required, current_user
@@ -1764,6 +1765,140 @@ def register_routes(app):
             })
         
         return jsonify({})
+
+    # ── Model Context Protocol (MCP) HTTP & SSE Transport ───────
+    import queue
+    _mcp_sse_sessions = {}
+
+    def _process_mcp_json_rpc(msg):
+        from mcp_server import TOOLS, TOOL_HANDLERS
+        method = msg.get("method")
+        req_id = msg.get("id")
+        params = msg.get("params", {})
+
+        if method == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {"listChanged": False},
+                        "resources": {},
+                        "prompts": {}
+                    },
+                    "serverInfo": {
+                        "name": "seo-automation-mcp",
+                        "version": "1.0.0"
+                    }
+                }
+            }
+        if method == "notifications/initialized":
+            return {"jsonrpc": "2.0", "result": {}}
+        if method == "ping":
+            return {"jsonrpc": "2.0", "id": req_id, "result": {}}
+        if method == "tools/list":
+            return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": TOOLS}}
+        if method == "tools/call":
+            tool_name = params.get("name")
+            tool_args = params.get("arguments", {})
+            handler = TOOL_HANDLERS.get(tool_name)
+            if not handler:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32601, "message": f"Tool '{tool_name}' not found."}
+                }
+            try:
+                res_text = handler(tool_args)
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": str(res_text)}],
+                        "isError": False
+                    }
+                }
+            except Exception as e:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"Error: {str(e)}"}],
+                        "isError": True
+                    }
+                }
+        if req_id is not None:
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32601, "message": f"Method '{method}' not recognized."}
+            }
+        return {}
+
+    @app.route('/mcp', methods=['GET', 'POST', 'OPTIONS'])
+    @app.route('/sse', methods=['GET', 'POST', 'OPTIONS'])
+    @app.route('/mcp/sse', methods=['GET', 'POST', 'OPTIONS'])
+    def mcp_stream():
+        if request.method == 'OPTIONS':
+            resp = Response("", 200)
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
+            return resp
+
+        if request.method == 'GET':
+            session_id = uuid.uuid4().hex
+            q = queue.Queue()
+            _mcp_sse_sessions[session_id] = q
+
+            host = request.headers.get('X-Forwarded-Host') or request.host
+            proto = request.headers.get('X-Forwarded-Proto') or request.scheme
+            endpoint_url = f"{proto}://{host}/mcp/messages?sessionId={session_id}"
+
+            def event_stream():
+                yield f"event: endpoint\ndata: {endpoint_url}\n\n"
+                while True:
+                    try:
+                        msg_data = q.get(timeout=20)
+                        if msg_data is None:
+                            break
+                        yield f"event: message\ndata: {json.dumps(msg_data)}\n\n"
+                    except queue.Empty:
+                        yield ": keepalive\n\n"
+
+            resp = Response(stream_with_context(event_stream()), content_type='text/event-stream')
+            resp.headers['Cache-Control'] = 'no-cache'
+            resp.headers['X-Accel-Buffering'] = 'no'
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            return resp
+
+        payload = request.get_json(silent=True) or {}
+        res = _process_mcp_json_rpc(payload)
+        resp = jsonify(res)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
+
+    @app.route('/mcp/messages', methods=['POST', 'OPTIONS'])
+    def mcp_messages():
+        if request.method == 'OPTIONS':
+            resp = Response("", 200)
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
+            return resp
+
+        session_id = request.args.get('sessionId') or request.args.get('session_id')
+        payload = request.get_json(silent=True) or {}
+        res = _process_mcp_json_rpc(payload)
+
+        if session_id and session_id in _mcp_sse_sessions:
+            _mcp_sse_sessions[session_id].put(res)
+            return Response("Accepted", 202, headers={'Access-Control-Allow-Origin': '*'})
+
+        resp = jsonify(res)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
 
 
 def _job_names():

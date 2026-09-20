@@ -106,6 +106,14 @@ TOOLS = [
                 "run_id": {
                     "type": "integer",
                     "description": "Optional specific JobRun ID. Defaults to the latest completed run."
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Optional category filter to isolate specific issues (e.g. 'Missing Meta Description')."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of sample issues/URLs to display (default 25, max 100)."
                 }
             },
             "required": ["job_number"]
@@ -128,6 +136,76 @@ TOOLS = [
                 }
             },
             "required": ["job_number"]
+        }
+    },
+    {
+        "name": "get_category_issues",
+        "description": "Fetch affected URLs, product names, current metadata, and recommended fixes for any category or module (e.g. 'Missing Meta Description', '4xx Error', 'Title Too Long'). Returns full URLs and fix details directly without needing to approve a task.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "job_number": {
+                    "type": "integer",
+                    "description": "Job module number (1: Technical Crawl, 2: GSC Ranking Anomalies, 3: Product Metadata QA, 4: Redirect Checks).",
+                    "enum": [1, 2, 3, 4]
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Exact or partial name of issue category (e.g. 'Missing Meta Description', 'Title Too Long', '4xx Error', 'Thin Content', 'HIGH'). Case-insensitive."
+                },
+                "template": {
+                    "type": "string",
+                    "description": "Optional page template filter (e.g. 'product', 'collection', 'blog', 'search')."
+                },
+                "search": {
+                    "type": "string",
+                    "description": "Optional search term to filter affected URLs, product names, or descriptions."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of issues/URLs to return (default 50, max 200)."
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Pagination offset (default 0)."
+                },
+                "run_id": {
+                    "type": "integer",
+                    "description": "Optional audit JobRun ID. Defaults to latest completed run."
+                }
+            },
+            "required": ["job_number"]
+        }
+    },
+    {
+        "name": "search_issues",
+        "description": "Search across all audit issues and affected URLs by keyword (e.g. 'missing meta description', 'dog food', '404', 'product'). Returns matching URLs, product names, current tags, and AI suggested fixes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Keyword or URL pattern to search for across all issues and pages."
+                },
+                "job_number": {
+                    "type": "integer",
+                    "description": "Optional audit job number filter (1, 2, 3, or 4). If omitted, searches across all modules.",
+                    "enum": [1, 2, 3, 4]
+                },
+                "template": {
+                    "type": "string",
+                    "description": "Optional page template filter (e.g. 'product', 'collection', 'blog')."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return (default 50, max 200)."
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Pagination offset (default 0)."
+                }
+            },
+            "required": ["query"]
         }
     },
     {
@@ -431,6 +509,8 @@ def handle_run_audit_job(args):
 def handle_get_audit_report(args):
     job_num = args.get("job_number")
     run_id = args.get("run_id")
+    category = args.get("category", "").strip() if args.get("category") else None
+    limit = min(max(int(args.get("limit", 25)), 1), 100)
 
     if not run_id:
         active_ds = Dataset.query.filter_by(is_active=True).first()
@@ -463,10 +543,14 @@ def handle_get_audit_report(args):
         for cat, cnt in s['issue_type_counts'].items():
             md.append(f"- **{cat}**: {cnt} URLs affected")
 
-        md.extend(["", "## Top 10 Sample Issues", "| URL | Issue | Severity | Action |", "| :--- | :--- | :--- | :--- |"])
-        for issue in s['issues'][:10]:
-            clean_url = issue.url.replace("https://www.meridianpet.com", "") or "/"
-            md.append(f"| `{clean_url}` | {issue.issue} | {issue.severity} | {issue.recommended_action[:60]}... |")
+        issues_to_show = s['issues']
+        if category:
+            issues_to_show = [i for i in issues_to_show if category.lower() in i.issue.lower()]
+
+        md.extend(["", f"## Affected URLs & Recommended Fixes (Showing {min(len(issues_to_show), limit)} of {len(issues_to_show)})", "| # | URL | Issue | Severity | Recommended Fix |", "| :- | :--- | :--- | :--- | :--- |"])
+        for idx, issue in enumerate(issues_to_show[:limit], start=1):
+            act = (issue.recommended_action or "—").replace("\n", " ").strip()
+            md.append(f"| {idx} | `{issue.url}` | {issue.issue} | {issue.severity} | {act[:80]}... |")
         return "\n".join(md)
 
     elif job_num == 2:
@@ -479,11 +563,11 @@ def handle_get_audit_report(args):
             f"**Run Date**: {run.run_date.strftime('%Y-%m-%d %H:%M UTC')} | **Total Queries**: {s['total_queries']}",
             f"**Alerts**: HIGH: {s['alert_counts']['HIGH']} | MEDIUM: {s['alert_counts']['MEDIUM']} | WATCH: {s['alert_counts']['WATCH']}",
             "",
-            "## Top Ranking Declines (Sample)",
+            "## Ranking Declines & Anomalies",
             "| Query | Alert | Clicks Δ% | Pos Δ | Reason |",
             "| :--- | :--- | :--- | :--- | :--- |",
         ]
-        for a in s['anomalies'][:10]:
+        for a in s['anomalies'][:limit]:
             md.append(f"| **{a.query}** | {a.alert_level} | {round(a.clicks_change_pct, 1)}% | {a.position_change} | {a.anomaly_reason[:60]}... |")
         return "\n".join(md)
 
@@ -500,9 +584,16 @@ def handle_get_audit_report(args):
         ]
         for itype, cnt in s['issue_type_counts'].items():
             md.append(f"- **{itype}**: {cnt} products")
-        md.extend(["", "## Sample Recommendations", "| Product | Issue | Current | Suggested Fix |", "| :--- | :--- | :--- | :--- |"])
-        for issue in s['issues'][:8]:
-            md.append(f"| **{issue.product_name}** | {issue.issue_type} | `{issue.current_value[:30]}` | {issue.suggested_value[:60]}... |")
+
+        issues_to_show = s['issues']
+        if category:
+            issues_to_show = [i for i in issues_to_show if category.lower() in i.issue_type.lower()]
+
+        md.extend(["", f"## Product Recommendations & URLs (Showing {min(len(issues_to_show), limit)} of {len(issues_to_show)})", "| # | Product | URL | Issue | Current | AI Suggested Fix |", "| :- | :--- | :--- | :--- | :--- | :--- |"])
+        for idx, issue in enumerate(issues_to_show[:limit], start=1):
+            curr = (issue.current_value or "(empty)").replace("\n", " ").strip()
+            sugg = (issue.suggested_value or "—").replace("\n", " ").strip()
+            md.append(f"| {idx} | **{issue.product_name}** | `{issue.url}` | {issue.issue_type} | `{curr[:30]}` | {sugg[:70]}... |")
         return "\n".join(md)
 
     elif job_num == 4:
@@ -515,11 +606,11 @@ def handle_get_audit_report(args):
             f"**Pass Rate**: {s['pass_rate']}% | **Total Checks**: {s['total_checks']}",
             f"**Results**: Passing: {s['result_counts']['PASS']} | Critical: {s['result_counts']['CRITICAL']} | Warning: {s['result_counts']['WARNING']}",
             "",
-            "## Broken / Warning Redirects (Sample)",
+            "## Broken / Warning Redirects",
             "| Source URL | Target | Status | Result |",
             "| :--- | :--- | :--- | :--- |",
         ]
-        broken = [c for c in s['checks'] if c.pass_fail != 'PASS'][:10]
+        broken = [c for c in s['checks'] if c.pass_fail != 'PASS'][:limit]
         for c in broken:
             md.append(f"| `{c.old_url}` | `{c.expected_url}` | {c.actual_status} | {c.pass_fail} |")
         return "\n".join(md)
@@ -575,6 +666,299 @@ def handle_list_issue_categories(args):
             action_str = "Ready for Approval"
 
         md.append(f"| **{c['name']}** | {c['count']} items | {c['severity']} | {status_str} | {action_str} |")
+
+    return "\n".join(md)
+
+
+def handle_get_category_issues(args):
+    """Fetch detailed issues, affected URLs, and recommended fixes for any category."""
+    job_num = args.get("job_number")
+    category = args.get("category", "").strip() if args.get("category") else None
+    template = args.get("template", "").strip().lower() if args.get("template") else None
+    search = args.get("search", "").strip() if args.get("search") else None
+    limit = min(max(int(args.get("limit", 50)), 1), 200)
+    offset = max(int(args.get("offset", 0)), 0)
+    run_id = args.get("run_id")
+
+    if not run_id:
+        active_ds = Dataset.query.filter_by(is_active=True).first()
+        q = JobRun.query.filter_by(job_number=job_num, status='completed')
+        if active_ds:
+            latest = q.filter_by(dataset_id=active_ds.id).order_by(JobRun.run_date.desc()).first()
+            if not latest:
+                latest = q.order_by(JobRun.run_date.desc()).first()
+        else:
+            latest = q.order_by(JobRun.run_date.desc()).first()
+        run_id = latest.id if latest else None
+
+    if not run_id:
+        return f"No completed audit runs found for Job {job_num}."
+
+    if job_num == 3:
+        query = ProductQAIssue.query.filter_by(run_id=run_id)
+        if category:
+            cat_l = category.lower()
+            if "description" in cat_l or "meta" in cat_l:
+                query = query.filter(ProductQAIssue.issue_type.ilike("%description%"))
+            elif "long" in cat_l:
+                query = query.filter(ProductQAIssue.issue_type.ilike("%long%"))
+            elif "short" in cat_l:
+                query = query.filter(ProductQAIssue.issue_type.ilike("%short%"))
+            elif "generic" in cat_l or "default" in cat_l:
+                query = query.filter(ProductQAIssue.issue_type.ilike("%generic%"))
+            elif "canonical" in cat_l:
+                query = query.filter(ProductQAIssue.issue_type.ilike("%canonical%"))
+            elif "thin" in cat_l:
+                query = query.filter(ProductQAIssue.issue_type.ilike("%thin%"))
+            elif "title" in cat_l:
+                query = query.filter(ProductQAIssue.issue_type.ilike("%title%"))
+            else:
+                query = query.filter(ProductQAIssue.issue_type.ilike(f"%{category}%"))
+
+        if template:
+            query = query.filter(ProductQAIssue.template.ilike(f"%{template}%"))
+
+        if search:
+            query = query.filter(
+                db.or_(
+                    ProductQAIssue.product_name.ilike(f"%{search}%"),
+                    ProductQAIssue.url.ilike(f"%{search}%"),
+                    ProductQAIssue.current_value.ilike(f"%{search}%"),
+                    ProductQAIssue.suggested_value.ilike(f"%{search}%")
+                )
+            )
+
+        total_count = query.count()
+        items = query.order_by(ProductQAIssue.id.asc()).offset(offset).limit(limit).all()
+
+        md = [
+            f"# 🛍️ Job 3 Product Metadata Issues (Run #{run_id})",
+            f"**Category**: `{category or 'All'}` | **Template**: `{template or 'All'}` | **Search**: `{search or 'None'}`",
+            f"**Total Affected Products**: {total_count} | **Showing**: {offset + 1}–{min(offset + len(items), total_count)} of {total_count}",
+            "",
+            "| # | Product Name | Product URL | Issue Category | Current Value | AI Suggested Fix |",
+            "| :- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for idx, it in enumerate(items, start=offset + 1):
+            curr = (it.current_value or "(none)").replace("\n", " ").strip()
+            if len(curr) > 40:
+                curr = curr[:37] + "..."
+            sugg = (it.suggested_value or "—").replace("\n", " ").strip()
+            md.append(f"| {idx} | **{it.product_name or 'Product'}** | `{it.url}` | {it.issue_type} | {curr} | {sugg} |")
+
+        if offset + len(items) < total_count:
+            next_offset = offset + limit
+            md.append(f"\n*Tip: To view the next page of URLs, call `get_category_issues(job_number=3, category='{category or ''}', offset={next_offset}, limit={limit})`.*")
+
+        return "\n".join(md)
+
+    elif job_num == 1:
+        query = CrawlIssue.query.filter_by(run_id=run_id)
+        if category:
+            cat_l = category.lower()
+            if "description" in cat_l or "meta" in cat_l:
+                query = query.filter(CrawlIssue.issue.ilike("%description%"))
+            elif "4xx" in cat_l or "404" in cat_l or "error" in cat_l:
+                query = query.filter(CrawlIssue.issue.ilike("%4xx%"))
+            elif "long" in cat_l:
+                query = query.filter(CrawlIssue.issue.ilike("%long%"))
+            elif "title" in cat_l:
+                query = query.filter(CrawlIssue.issue.ilike("%title%"))
+            elif "thin" in cat_l:
+                query = query.filter(CrawlIssue.issue.ilike("%thin%"))
+            elif "sitemap" in cat_l:
+                query = query.filter(CrawlIssue.issue.ilike("%sitemap%"))
+            elif "robot" in cat_l:
+                query = query.filter(CrawlIssue.issue.ilike("%robot%"))
+            elif "redirect" in cat_l:
+                query = query.filter(CrawlIssue.issue.ilike("%redirect%"))
+            else:
+                query = query.filter(CrawlIssue.issue.ilike(f"%{category}%"))
+
+        if template:
+            query = query.filter(CrawlIssue.template.ilike(f"%{template}%"))
+
+        if search:
+            query = query.filter(
+                db.or_(
+                    CrawlIssue.url.ilike(f"%{search}%"),
+                    CrawlIssue.issue.ilike(f"%{search}%"),
+                    CrawlIssue.recommended_action.ilike(f"%{search}%"),
+                    CrawlIssue.why_it_matters.ilike(f"%{search}%")
+                )
+            )
+
+        total_count = query.count()
+        items = query.order_by(CrawlIssue.severity.asc(), CrawlIssue.id.asc()).offset(offset).limit(limit).all()
+
+        md = [
+            f"# 🔍 Job 1 Technical Crawl Issues (Run #{run_id})",
+            f"**Category**: `{category or 'All'}` | **Template**: `{template or 'All'}` | **Search**: `{search or 'None'}`",
+            f"**Total Affected URLs**: {total_count} | **Showing**: {offset + 1}–{min(offset + len(items), total_count)} of {total_count}",
+            "",
+            "| # | Affected URL | Page Template | Issue Category | Severity | Recommended Fix |",
+            "| :- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for idx, it in enumerate(items, start=offset + 1):
+            act = (it.recommended_action or "—").replace("\n", " ").strip()
+            md.append(f"| {idx} | `{it.url}` | {it.template or 'page'} | {it.issue} | {it.severity} | {act} |")
+
+        if offset + len(items) < total_count:
+            next_offset = offset + limit
+            md.append(f"\n*Tip: To view more URLs, call `get_category_issues(job_number=1, category='{category or ''}', offset={next_offset}, limit={limit})`.*")
+
+        return "\n".join(md)
+
+    elif job_num == 2:
+        query = RankingAnomaly.query.filter_by(run_id=run_id)
+        if category:
+            query = query.filter(RankingAnomaly.alert_level.ilike(f"%{category}%"))
+        if search:
+            query = query.filter(
+                db.or_(
+                    RankingAnomaly.query.ilike(f"%{search}%"),
+                    RankingAnomaly.alert_reason.ilike(f"%{search}%")
+                )
+            )
+        total_count = query.count()
+        items = query.order_by(RankingAnomaly.clicks_change_pct.asc()).offset(offset).limit(limit).all()
+
+        md = [
+            f"# 📈 Job 2 GSC Ranking Anomalies (Run #{run_id})",
+            f"**Total Anomalies**: {total_count} | **Showing**: {offset + 1}–{min(offset + len(items), total_count)}",
+            "",
+            "| # | Search Query | Alert Level | Clicks Δ% | Position Δ | Reason & Context |",
+            "| :- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for idx, a in enumerate(items, start=offset + 1):
+            md.append(f"| {idx} | **{a.query}** | {a.alert_level} | {round(a.clicks_change_pct, 1)}% | {a.position_change} | {a.alert_reason or '—'} |")
+
+        return "\n".join(md)
+
+    elif job_num == 4:
+        query = RedirectCheck.query.filter_by(run_id=run_id)
+        if category:
+            query = query.filter(RedirectCheck.pass_fail.ilike(f"%{category}%"))
+        if search:
+            query = query.filter(
+                db.or_(
+                    RedirectCheck.old_url.ilike(f"%{search}%"),
+                    RedirectCheck.expected_url.ilike(f"%{search}%"),
+                    RedirectCheck.actual_final_url.ilike(f"%{search}%"),
+                    RedirectCheck.failure_reason.ilike(f"%{search}%")
+                )
+            )
+        total_count = query.count()
+        items = query.offset(offset).limit(limit).all()
+
+        md = [
+            f"# 🔗 Job 4 Redirect Validation Checks (Run #{run_id})",
+            f"**Total Checks**: {total_count} | **Showing**: {offset + 1}–{min(offset + len(items), total_count)}",
+            "",
+            "| # | Old Source URL | Expected Destination | Actual Status | Result | Failure Reason |",
+            "| :- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        for idx, c in enumerate(items, start=offset + 1):
+            md.append(f"| {idx} | `{c.old_url}` | `{c.expected_url}` | {c.actual_status} | {c.pass_fail} | {c.failure_reason or 'None'} |")
+
+        return "\n".join(md)
+
+    return f"Invalid job number {job_num}."
+
+
+def handle_search_issues(args):
+    """Search across all audit issues and URLs by keyword or pattern."""
+    query_str = args.get("query", "").strip()
+    job_num = args.get("job_number")
+    template = args.get("template", "").strip().lower() if args.get("template") else None
+    limit = min(max(int(args.get("limit", 50)), 1), 200)
+    offset = max(int(args.get("offset", 0)), 0)
+
+    if not query_str:
+        return "Please provide a search query (e.g. 'missing meta description', 'dog food', '404')."
+
+    active_ds = Dataset.query.filter_by(is_active=True).first()
+    ds_id = active_ds.id if active_ds else None
+
+    latest_runs = {}
+    for j in range(1, 5):
+        q = JobRun.query.filter_by(job_number=j, status='completed')
+        if ds_id:
+            r = q.filter_by(dataset_id=ds_id).order_by(JobRun.run_date.desc()).first()
+            if not r:
+                r = q.order_by(JobRun.run_date.desc()).first()
+        else:
+            r = q.order_by(JobRun.run_date.desc()).first()
+        if r:
+            latest_runs[j] = r.id
+
+    md = [
+        f"# 🔎 Search Results for: `{query_str}`",
+        f"**Template**: `{template or 'All'}` | **Module Filter**: `{job_num or 'All Modules'}`",
+        "",
+    ]
+    results_found = 0
+
+    # Search Job 3 (Product QA)
+    if (job_num is None or job_num == 3) and 3 in latest_runs:
+        run3_id = latest_runs[3]
+        q3 = ProductQAIssue.query.filter_by(run_id=run3_id).filter(
+            db.or_(
+                ProductQAIssue.issue_type.ilike(f"%{query_str}%"),
+                ProductQAIssue.product_name.ilike(f"%{query_str}%"),
+                ProductQAIssue.url.ilike(f"%{query_str}%"),
+                ProductQAIssue.current_value.ilike(f"%{query_str}%"),
+                ProductQAIssue.suggested_value.ilike(f"%{query_str}%"),
+            )
+        )
+        if template:
+            q3 = q3.filter(ProductQAIssue.template.ilike(f"%{template}%"))
+
+        count3 = q3.count()
+        results_found += count3
+        if count3 > 0:
+            md.append(f"### 🛍️ Job 3: Product Metadata QA ({count3} matching products)")
+            md.append("| Product Name | Product URL | Issue | Current Value | AI Suggested Fix |")
+            md.append("| :--- | :--- | :--- | :--- | :--- |")
+            for p in q3.offset(offset).limit(limit).all():
+                curr = (p.current_value or "(none)").replace("\n", " ").strip()
+                if len(curr) > 35:
+                    curr = curr[:32] + "..."
+                sugg = (p.suggested_value or "—").replace("\n", " ").strip()
+                if len(sugg) > 75:
+                    sugg = sugg[:72] + "..."
+                md.append(f"| **{p.product_name}** | `{p.url}` | {p.issue_type} | {curr} | {sugg} |")
+            md.append("")
+
+    # Search Job 1 (Crawl Issues)
+    if (job_num is None or job_num == 1) and 1 in latest_runs:
+        run1_id = latest_runs[1]
+        q1 = CrawlIssue.query.filter_by(run_id=run1_id).filter(
+            db.or_(
+                CrawlIssue.issue.ilike(f"%{query_str}%"),
+                CrawlIssue.url.ilike(f"%{query_str}%"),
+                CrawlIssue.recommended_action.ilike(f"%{query_str}%"),
+                CrawlIssue.why_it_matters.ilike(f"%{query_str}%"),
+            )
+        )
+        if template:
+            q1 = q1.filter(CrawlIssue.template.ilike(f"%{template}%"))
+
+        count1 = q1.count()
+        results_found += count1
+        if count1 > 0:
+            md.append(f"### 🔍 Job 1: Technical Crawl Issues ({count1} matching URLs)")
+            md.append("| Affected URL | Template | Issue | Severity | Recommended Fix |")
+            md.append("| :--- | :--- | :--- | :--- | :--- |")
+            for c in q1.offset(offset).limit(limit).all():
+                act = (c.recommended_action or "—").replace("\n", " ").strip()
+                if len(act) > 75:
+                    act = act[:72] + "..."
+                md.append(f"| `{c.url}` | {c.template or 'page'} | {c.issue} | {c.severity} | {act} |")
+            md.append("")
+
+    if results_found == 0:
+        md.append(f"No issues found matching `{query_str}` across the latest audit runs.")
 
     return "\n".join(md)
 
@@ -779,6 +1163,8 @@ TOOL_HANDLERS = {
     "run_audit_job": handle_run_audit_job,
     "get_audit_report": handle_get_audit_report,
     "list_issue_categories": handle_list_issue_categories,
+    "get_category_issues": handle_get_category_issues,
+    "search_issues": handle_search_issues,
     "approve_issue_category": handle_approve_issue_category,
     "disapprove_issue_category": handle_disapprove_issue_category,
     "list_pending_tasks": handle_list_pending_tasks,
