@@ -102,11 +102,18 @@
         </div>
       </div>
 
-      <!-- Quick client rename form -->
-      <form method="POST" action="{{ url_for('rename_client', dataset_id=active.id) }}" style="display:inline-flex;gap:6px;align-items:center;">
-        <input type="text" name="client_name" class="form-input" style="width:160px;padding:6px 10px;font-size:12px;" placeholder="Rename client" value="{{ active.client_name or '' }}" required>
-        <button type="submit" class="btn btn-secondary btn-sm">Rename Client</button>
-      </form>
+      <div style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <!-- Quick client rename form -->
+        <form method="POST" action="{{ url_for('rename_client', dataset_id=active.id) }}" style="display:inline-flex;gap:6px;align-items:center;">
+          <input type="text" name="client_name" class="form-input" style="width:160px;padding:6px 10px;font-size:12px;" placeholder="Rename client" value="{{ active.client_name or '' }}" required>
+          <button type="submit" class="btn btn-secondary btn-sm">Rename Client</button>
+        </form>
+
+        <!-- Remove dataset form -->
+        <form method="POST" action="{{ url_for('delete_dataset', dataset_id=active.id) }}" onsubmit="return confirm('Are you sure you want to permanently remove dataset &quot;{{ active.client_name or active.original_filename }}&quot; and all its audit reports?');" style="display:inline;">
+          <button type="submit" class="btn btn-danger btn-sm" title="Remove active dataset">🗑️ Delete Dataset</button>
+        </form>
+      </div>
     </div>
   </div>
 </div>
@@ -156,8 +163,11 @@
                 <button type="submit" class="btn btn-secondary btn-sm">Activate</button>
               </form>
               {% else %}
-              <span class="text-muted text-sm">Active Workspace</span>
+              <span class="text-muted text-sm" style="font-size:11px;padding:4px 6px;">Active</span>
               {% endif %}
+              <form method="POST" action="{{ url_for('delete_dataset', dataset_id=ds.id) }}" onsubmit="return confirm('Are you sure you want to permanently delete dataset &quot;{{ ds.client_name or ds.original_filename }}&quot; and all its audit reports?');" style="display:inline;">
+                <button type="submit" class="btn btn-danger btn-sm" style="padding:4px 8px;font-size:11px;" title="Delete dataset">🗑️ Delete</button>
+              </form>
             </div>
           </td>
         </tr>

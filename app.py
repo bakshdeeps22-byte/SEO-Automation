@@ -866,6 +866,56 @@ def register_routes(app):
             db.session.commit()
             flash(f'Client name updated to "{new_name}"', 'success')
         return redirect(request.referrer or url_for('upload_dataset'))
+
+    @app.route('/delete-dataset/<int:dataset_id>', methods=['POST'])
+    @admin_required
+    def delete_dataset(dataset_id):
+        dataset = Dataset.query.get_or_404(dataset_id)
+        was_active = dataset.is_active
+        name = dataset.client_name or dataset.original_filename
+        file_path = dataset.file_path
+
+        # 1. Delete associated WeeklySession & TrafficData
+        WeeklySession.query.filter_by(dataset_id=dataset_id).delete()
+        TrafficData.query.filter_by(dataset_id=dataset_id).delete()
+
+        # 2. Delete associated PendingTasks
+        PendingTask.query.filter_by(dataset_id=dataset_id).delete()
+
+        # 3. Delete associated SharedReports
+        SharedReport.query.filter_by(dataset_id=dataset_id).delete()
+
+        # 4. Delete associated JobRuns and their child issues
+        job_runs = JobRun.query.filter_by(dataset_id=dataset_id).all()
+        for jr in job_runs:
+            CrawlIssue.query.filter_by(run_id=jr.id).delete()
+            RankingAnomaly.query.filter_by(run_id=jr.id).delete()
+            ProductQAIssue.query.filter_by(run_id=jr.id).delete()
+            RedirectCheck.query.filter_by(run_id=jr.id).delete()
+            db.session.delete(jr)
+
+        # 5. Delete dataset record
+        db.session.delete(dataset)
+
+        # 6. If active, automatically activate another dataset if available
+        if was_active:
+            next_ds = Dataset.query.filter(Dataset.id != dataset_id).order_by(Dataset.upload_date.desc()).first()
+            if next_ds:
+                next_ds.is_active = True
+                if next_ds.file_path and os.path.exists(next_ds.file_path):
+                    _load_supporting_data(next_ds.file_path, next_ds)
+
+        # 7. Remove physical file from disk if uploaded
+        if file_path and os.path.exists(file_path):
+            if "NuroSparx-SEO-Automation-Data-Pack.xlsx" not in os.path.basename(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    logger.warning(f"Failed to delete uploaded file {file_path}: {e}")
+
+        db.session.commit()
+        flash(f'Dataset "{name}" and all associated data have been permanently removed.', 'success')
+        return redirect(request.referrer or url_for('upload_dataset'))
     
     # ── API Settings ────────────────────────────────────────────
     

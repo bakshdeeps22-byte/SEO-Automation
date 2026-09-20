@@ -74,6 +74,20 @@ TOOLS = [
         }
     },
     {
+        "name": "delete_client_project",
+        "description": "Permanently delete a client workspace/dataset and all its associated audit jobs, issues, pending tasks, and shared reports.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "dataset_id": {
+                    "type": "integer",
+                    "description": "ID of the dataset/project to permanently delete."
+                }
+            },
+            "required": ["dataset_id"]
+        }
+    },
+    {
         "name": "run_audit_job",
         "description": "Execute an automated SEO audit job. 1=Technical Crawl (4xx/5xx, titles, meta, canonicals), 2=GSC Ranking Anomalies, 3=Product Metadata QA & AI Recommendations, 4=Redirect Chain & Migration Checks, 0=Run All Jobs.",
         "inputSchema": {
@@ -464,6 +478,48 @@ def handle_switch_client_project(args):
     db.session.commit()
 
     return f"✅ Successfully switched active workspace to **{target.client_name or 'Project ' + str(target.id)}** (ID: {target.id})."
+
+
+def handle_delete_client_project(args):
+    dataset_id = args.get("dataset_id")
+    target = Dataset.query.get(dataset_id)
+    if not target:
+        return f"Error: Dataset ID {dataset_id} not found."
+
+    was_active = target.is_active
+    name = target.client_name or target.original_filename or f"Project {target.id}"
+    file_path = target.file_path
+
+    # Clean up relations
+    WeeklySession.query.filter_by(dataset_id=dataset_id).delete()
+    TrafficData.query.filter_by(dataset_id=dataset_id).delete()
+    PendingTask.query.filter_by(dataset_id=dataset_id).delete()
+    SharedReport.query.filter_by(dataset_id=dataset_id).delete()
+
+    job_runs = JobRun.query.filter_by(dataset_id=dataset_id).all()
+    for jr in job_runs:
+        CrawlIssue.query.filter_by(run_id=jr.id).delete()
+        RankingAnomaly.query.filter_by(run_id=jr.id).delete()
+        ProductQAIssue.query.filter_by(run_id=jr.id).delete()
+        RedirectCheck.query.filter_by(run_id=jr.id).delete()
+        db.session.delete(jr)
+
+    db.session.delete(target)
+
+    if was_active:
+        next_ds = Dataset.query.filter(Dataset.id != dataset_id).order_by(Dataset.upload_date.desc()).first()
+        if next_ds:
+            next_ds.is_active = True
+
+    if file_path and os.path.exists(file_path):
+        if "NuroSparx-SEO-Automation-Data-Pack.xlsx" not in os.path.basename(file_path):
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+
+    db.session.commit()
+    return f"🗑️ Successfully deleted client workspace **{name}** (ID: {dataset_id}) and cleaned up all associated audit runs, tasks, and reports."
 
 
 def handle_run_audit_job(args):
@@ -1160,6 +1216,7 @@ TOOL_HANDLERS = {
     "get_seo_overview": handle_get_seo_overview,
     "list_client_projects": handle_list_client_projects,
     "switch_client_project": handle_switch_client_project,
+    "delete_client_project": handle_delete_client_project,
     "run_audit_job": handle_run_audit_job,
     "get_audit_report": handle_get_audit_report,
     "list_issue_categories": handle_list_issue_categories,

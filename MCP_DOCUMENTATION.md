@@ -197,6 +197,11 @@ For running locally against your local repository:
 - **Parameters**:
   - `dataset_id` *(integer, required)*
 
+#### `delete_client_project`
+- **Description**: Permanently deletes a client workspace/dataset along with all its associated audit jobs, issues, pending tasks, and reports.
+- **Parameters**:
+  - `dataset_id` *(integer, required)*
+
 #### `run_audit_job`
 - **Description**: Executes an automated SEO audit job on demand.
 - **Parameters**:
