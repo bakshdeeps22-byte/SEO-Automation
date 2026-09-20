@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def create_app():
+def create_app(start_scheduler=True):
     """Application factory."""
     app = Flask(__name__)
     app.config.from_object(Config)
@@ -61,11 +61,12 @@ def create_app():
     register_routes(app)
     
     # Start scheduler
-    try:
-        from jobs.scheduler import init_scheduler
-        init_scheduler(app)
-    except Exception as e:
-        logger.warning(f"Scheduler init failed: {e}")
+    if start_scheduler:
+        try:
+            from jobs.scheduler import init_scheduler
+            init_scheduler(app)
+        except Exception as e:
+            logger.warning(f"Scheduler init failed: {e}")
     
     return app
 
