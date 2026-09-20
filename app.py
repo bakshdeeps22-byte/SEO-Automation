@@ -729,13 +729,23 @@ def register_routes(app):
             issue.approved_by = current_user.username
             issue.approved_at = datetime.now(timezone.utc)
             flash(f'Approved fix for {issue.product_name}', 'success')
+            target_tab = 'approved'
         elif action == 'reject':
             issue.status = 'rejected'
             issue.notes = request.form.get('notes', '')
             flash(f'Rejected fix for {issue.product_name}', 'info')
+            target_tab = 'rejected'
+        elif action in ('reset', 'revert', 'pending'):
+            issue.status = 'pending'
+            issue.approved_by = None
+            issue.approved_at = None
+            flash(f'Reverted {issue.product_name} back to Pending', 'info')
+            target_tab = 'pending'
+        else:
+            target_tab = 'pending'
         
         db.session.commit()
-        return redirect(url_for('job3_detail'))
+        return redirect(url_for('job3_detail', tab=target_tab))
     
     @app.route('/job/3/bulk-approve', methods=['POST'])
     @manager_required
@@ -751,8 +761,8 @@ def register_routes(app):
                 count += 1
         
         db.session.commit()
-        flash(f'Approved {count} issues', 'success')
-        return redirect(url_for('job3_detail'))
+        flash(f'Approved {count} action items! View them in the Approved tab below.', 'success')
+        return redirect(url_for('job3_detail', tab='approved'))
     
     # ── Dataset Upload ──────────────────────────────────────────
     

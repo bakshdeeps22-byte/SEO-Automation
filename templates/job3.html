@@ -23,27 +23,27 @@
 {% block content %}
 {% if summary %}
 
-<!-- Status Summary -->
-<div class="stats-grid">
-  <div class="stat-card">
+<!-- Status Summary with Clickable Filters -->
+<div class="stats-grid mb-6">
+  <div class="stat-card" onclick="switchQATab('pending')" style="cursor:pointer;transition:transform 0.15s, box-shadow 0.15s;" title="View Pending Review items">
     <div class="stat-card-icon amber">⏳</div>
     <div class="stat-card-value">{{ summary.status_counts.pending }}</div>
-    <div class="stat-card-label">Pending Approval</div>
+    <div class="stat-card-label">Pending Approval ▾</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card" onclick="switchQATab('approved')" style="cursor:pointer;transition:transform 0.15s, box-shadow 0.15s;border:2px solid {% if summary.status_counts.approved > 0 %}rgba(16,185,129,0.4){% else %}transparent{% endif %};" title="View Approved Action Items">
     <div class="stat-card-icon green">✅</div>
-    <div class="stat-card-value">{{ summary.status_counts.approved }}</div>
-    <div class="stat-card-label">Approved</div>
+    <div class="stat-card-value" style="color:var(--success);">{{ summary.status_counts.approved }}</div>
+    <div class="stat-card-label" style="font-weight:700;color:var(--success);">Approved Items ▾</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card" onclick="switchQATab('rejected')" style="cursor:pointer;transition:transform 0.15s, box-shadow 0.15s;" title="View Rejected items">
     <div class="stat-card-icon red">❌</div>
     <div class="stat-card-value">{{ summary.status_counts.rejected }}</div>
-    <div class="stat-card-label">Rejected</div>
+    <div class="stat-card-label">Rejected ▾</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card" onclick="switchQATab('all')" style="cursor:pointer;transition:transform 0.15s, box-shadow 0.15s;" title="View All items">
     <div class="stat-card-icon blue">📋</div>
     <div class="stat-card-value">{{ summary.total_issues }}</div>
-    <div class="stat-card-label">Total Issues</div>
+    <div class="stat-card-label">Total Issues ▾</div>
   </div>
 </div>
 
@@ -111,7 +111,7 @@
             <input type="hidden" name="item_count" value="{{ cat.count }}">
             <input type="hidden" name="severity" value="{{ cat.severity }}">
             <input type="hidden" name="next" value="{{ request.full_path }}">
-            <button type="submit" class="btn btn-success btn-sm" style="width:100%;font-size:12px;font-weight:600;">✅ Approve</button>
+            <button type="submit" class="btn btn-success btn-sm" style="width:100%;font-size:12px;font-weight:600;">✅ Approve Category</button>
           </form>
           <form method="POST" action="{{ url_for('disapprove_category') }}" style="flex:1;">
             <input type="hidden" name="job_number" value="{{ cat.job_number }}">
@@ -126,104 +126,381 @@
   </div>
 </div>
 
-<!-- Bulk Approve Form -->
-{% set pending_issues = summary.issues|selectattr('status', 'equalto', 'pending')|list %}
-{% if pending_issues %}
-<form method="POST" action="{{ url_for('bulk_approve') }}" id="bulk-form">
-  <div class="flex items-center justify-between mb-4">
-    <div class="flex items-center gap-3">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;">
-        <input type="checkbox" id="select-all"> Select All Pending
-      </label>
-    </div>
-    <button type="submit" class="btn btn-success btn-sm">✅ Bulk Approve Selected</button>
-  </div>
-
-  <!-- Pending Approval Cards -->
-  {% for issue in pending_issues %}
-  <div class="approval-card">
-    <div class="approval-card-header">
-      <div>
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px;">{{ issue.product_name }}</div>
-        <span class="badge badge-{{ issue.status }}">{{ issue.issue_type }}</span>
-        <span class="text-sm text-muted" style="margin-left:8px;">{{ issue.template }}</span>
-      </div>
-      <input type="checkbox" name="issue_ids" value="{{ issue.id }}" class="issue-checkbox">
+<!-- Tab Navigation Bar for Action Items -->
+<div class="card mb-4" style="padding:10px 16px;background:var(--bg-secondary);border:1px solid var(--border);">
+  <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:12px;">
+    <div class="flex items-center gap-2" style="flex-wrap:wrap;">
+      <button type="button" class="qa-tab-btn" id="btn-tab-pending" onclick="switchQATab('pending')" style="padding:7px 14px;border-radius:var(--radius-sm);font-weight:600;font-size:13px;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--text-secondary);">
+        ⏳ Pending Approval ({{ summary.status_counts.pending }})
+      </button>
+      <button type="button" class="qa-tab-btn" id="btn-tab-approved" onclick="switchQATab('approved')" style="padding:7px 14px;border-radius:var(--radius-sm);font-weight:700;font-size:13px;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--text-secondary);">
+        ✅ Approved Items ({{ summary.status_counts.approved }})
+      </button>
+      <button type="button" class="qa-tab-btn" id="btn-tab-rejected" onclick="switchQATab('rejected')" style="padding:7px 14px;border-radius:var(--radius-sm);font-weight:600;font-size:13px;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--text-secondary);">
+        ❌ Rejected ({{ summary.status_counts.rejected }})
+      </button>
+      <button type="button" class="qa-tab-btn" id="btn-tab-all" onclick="switchQATab('all')" style="padding:7px 14px;border-radius:var(--radius-sm);font-weight:600;font-size:13px;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--text-secondary);">
+        📋 All Issues ({{ summary.total_issues }})
+      </button>
     </div>
 
-    <div style="font-family:'SF Mono',monospace;font-size:12px;color:var(--text-tertiary);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;">
-      {{ issue.url }}
+    <div class="flex items-center gap-2">
+      <input type="text" id="qa-search-filter" class="form-input" placeholder="🔍 Filter product or URL..." oninput="filterQAItems(this.value)" style="padding:5px 12px;font-size:12px;width:220px;border-radius:var(--radius-sm);">
     </div>
-
-    <div class="approval-current">
-      <div class="approval-label" style="color:var(--danger);">Current</div>
-      <div class="approval-value">{{ issue.current_value }}</div>
-    </div>
-
-    <div class="approval-suggested">
-      <div class="approval-label" style="color:var(--success);">Suggested Fix</div>
-      <div class="approval-value">{{ issue.suggested_value }}</div>
-    </div>
-
-    <div class="flex items-center justify-between">
-      <div>
-        <span class="text-sm text-muted">AI Confidence:</span>
-        <span style="font-weight:600;font-size:13px;">{{ "%.0f"|format(issue.ai_confidence * 100) }}%</span>
-        <div class="confidence-bar" style="width:120px;display:inline-block;vertical-align:middle;margin-left:8px;">
-          <div class="confidence-fill" style="width:{{ issue.ai_confidence * 100 }}%;"></div>
-        </div>
-      </div>
-      <div class="approval-actions">
-        <form method="POST" action="{{ url_for('approve_qa', issue_id=issue.id) }}" style="display:inline;">
-          <input type="hidden" name="action" value="approve">
-          <button type="submit" class="btn btn-success btn-sm">✅ Approve</button>
-        </form>
-        <form method="POST" action="{{ url_for('approve_qa', issue_id=issue.id) }}" style="display:inline;">
-          <input type="hidden" name="action" value="reject">
-          <button type="submit" class="btn btn-danger btn-sm">❌ Reject</button>
-        </form>
-      </div>
-    </div>
-  </div>
-  {% endfor %}
-</form>
-{% endif %}
-
-<!-- Processed Issues Table -->
-{% set processed = summary.issues|rejectattr('status', 'equalto', 'pending')|list %}
-{% if processed %}
-<div class="card mt-6">
-  <div class="card-header">
-    <span class="card-title">Processed Issues</span>
-  </div>
-  <div class="table-container">
-    <table>
-      <thead>
-        <tr>
-          <th>Product</th>
-          <th>Issue</th>
-          <th>Current</th>
-          <th>Suggested</th>
-          <th>Status</th>
-          <th>Approved By</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for issue in processed %}
-        <tr>
-          <td style="font-weight:500;">{{ issue.product_name }}</td>
-          <td>{{ issue.issue_type }}</td>
-          <td style="max-width:200px;font-size:12px;">{{ issue.current_value[:60] }}…</td>
-          <td style="max-width:200px;font-size:12px;">{{ issue.suggested_value[:60] }}…</td>
-          <td><span class="badge badge-{{ issue.status }}">{{ issue.status }}</span></td>
-          <td>{{ issue.approved_by or '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
   </div>
 </div>
-{% endif %}
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 1: PENDING APPROVAL ITEMS -->
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+{% set pending_issues = summary.issues|selectattr('status', 'equalto', 'pending')|list %}
+<div id="pane-pending" class="qa-tab-pane">
+  {% if pending_issues %}
+  <form method="POST" action="{{ url_for('bulk_approve') }}" id="bulk-form">
+    <div class="flex items-center justify-between mb-4" style="background:var(--bg-tertiary);padding:10px 16px;border-radius:var(--radius-md);border:1px solid var(--border);">
+      <div class="flex items-center gap-3">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-primary);">
+          <input type="checkbox" id="select-all"> Select All Visible Pending
+        </label>
+      </div>
+      <button type="submit" class="btn btn-success btn-sm" style="display:inline-flex;align-items:center;gap:6px;font-weight:700;">
+        ✅ Bulk Approve Selected
+      </button>
+    </div>
+
+    <!-- Pending Approval Cards -->
+    <div id="pending-cards-container">
+      {% for issue in pending_issues %}
+      <div class="approval-card qa-item-row" data-search="{{ issue.product_name|lower }} {{ issue.url|lower }} {{ issue.issue_type|lower }}">
+        <div class="approval-card-header">
+          <div>
+            <div style="font-size:15px;font-weight:700;margin-bottom:4px;">{{ issue.product_name }}</div>
+            <span class="badge badge-{{ issue.status }}">{{ issue.issue_type }}</span>
+            <span class="text-sm text-muted" style="margin-left:8px;">{{ issue.template }}</span>
+          </div>
+          <input type="checkbox" name="issue_ids" value="{{ issue.id }}" class="issue-checkbox">
+        </div>
+
+        <div style="font-family:'SF Mono',monospace;font-size:12px;color:var(--text-tertiary);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;">
+          <a href="{{ issue.url }}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;">
+            {{ issue.url }} ↗
+          </a>
+        </div>
+
+        <div class="approval-current">
+          <div class="approval-label" style="color:var(--danger);">Current Value</div>
+          <div class="approval-value">{{ issue.current_value }}</div>
+        </div>
+
+        <div class="approval-suggested">
+          <div class="approval-label" style="color:var(--success);">AI Suggested Fix</div>
+          <div class="approval-value">{{ issue.suggested_value }}</div>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-sm text-muted">AI Confidence:</span>
+            <span style="font-weight:600;font-size:13px;">{{ "%.0f"|format(issue.ai_confidence * 100) }}%</span>
+            <div class="confidence-bar" style="width:120px;display:inline-block;vertical-align:middle;margin-left:8px;">
+              <div class="confidence-fill" style="width:{{ issue.ai_confidence * 100 }}%;"></div>
+            </div>
+          </div>
+          <div class="approval-actions">
+            <form method="POST" action="{{ url_for('approve_qa', issue_id=issue.id) }}" style="display:inline;">
+              <input type="hidden" name="action" value="approve">
+              <button type="submit" class="btn btn-success btn-sm">✅ Approve</button>
+            </form>
+            <form method="POST" action="{{ url_for('approve_qa', issue_id=issue.id) }}" style="display:inline;">
+              <input type="hidden" name="action" value="reject">
+              <button type="submit" class="btn btn-danger btn-sm">❌ Reject</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </form>
+  {% else %}
+  <div class="card" style="text-align:center;padding:40px 20px;">
+    <div style="font-size:36px;margin-bottom:10px;">🎉</div>
+    <div style="font-weight:700;font-size:16px;color:var(--text-primary);margin-bottom:4px;">No Pending Items Remaining</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">All product metadata issues have been reviewed and approved or rejected.</div>
+    <button type="button" class="btn btn-primary btn-sm" onclick="switchQATab('approved')">View Approved Items ({{ summary.status_counts.approved }}) →</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 2: APPROVED ITEMS LIST (PROMINENT TABLE) -->
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+{% set approved_issues = summary.issues|selectattr('status', 'equalto', 'approved')|list %}
+<div id="pane-approved" class="qa-tab-pane" style="display:none;">
+  <div class="card">
+    <div class="card-header flex items-center justify-between" style="padding:16px 20px;border-bottom:1px solid var(--border);">
+      <div>
+        <span class="card-title" style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
+          ✅ Approved Action Items ({{ approved_issues|length }})
+        </span>
+        <div class="card-subtitle">These recommendations have been approved and are queued for developer implementation or Shopify update.</div>
+      </div>
+      {% if approved_issues %}
+      <span class="badge badge-success" style="font-size:12px;padding:4px 10px;">{{ approved_issues|length }} Approved</span>
+      {% endif %}
+    </div>
+
+    {% if approved_issues %}
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px;">#</th>
+            <th>Product Name</th>
+            <th>Product URL</th>
+            <th>Issue Type</th>
+            <th>Original Value</th>
+            <th>Approved Fix (AI Recommendation)</th>
+            <th>Approved By</th>
+            <th style="text-align:right;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for issue in approved_issues %}
+          <tr class="qa-item-row" data-search="{{ issue.product_name|lower }} {{ issue.url|lower }} {{ issue.issue_type|lower }}">
+            <td style="color:var(--text-tertiary);font-size:12px;">{{ loop.index }}</td>
+            <td style="font-weight:700;color:var(--text-primary);">
+              {{ issue.product_name }}
+              <div style="font-size:11px;color:var(--text-tertiary);font-weight:normal;">{{ issue.template or 'product' }}</div>
+            </td>
+            <td>
+              <a href="{{ issue.url }}" target="_blank" rel="noopener" style="font-size:12px;font-family:'SF Mono',monospace;color:var(--primary);text-decoration:underline;" title="{{ issue.url }}">
+                {{ issue.url[:45] }}{% if issue.url|length > 45 %}...{% endif %} ↗
+              </a>
+            </td>
+            <td><span class="badge badge-success" style="font-size:11px;">{{ issue.issue_type }}</span></td>
+            <td style="max-width:160px;font-size:12px;color:var(--danger);">{{ issue.current_value }}</td>
+            <td style="max-width:280px;font-size:12px;font-weight:600;color:var(--success);">{{ issue.suggested_value }}</td>
+            <td>
+              <div style="font-size:12px;font-weight:600;color:var(--text-primary);">{{ issue.approved_by or 'Admin' }}</div>
+              <div style="font-size:11px;color:var(--text-tertiary);">{{ issue.approved_at.strftime('%b %d, %Y %I:%M %p') if issue.approved_at else '—' }}</div>
+            </td>
+            <td style="text-align:right;">
+              <form method="POST" action="{{ url_for('approve_qa', issue_id=issue.id) }}" style="display:inline;">
+                <input type="hidden" name="action" value="reset">
+                <button type="submit" class="btn btn-ghost btn-sm" title="Revert back to pending review" style="color:var(--warning);font-size:11px;padding:3px 8px;border:1px solid var(--border);">
+                  ↩ Revert
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:48px 20px;">
+      <div style="font-size:40px;margin-bottom:12px;">🔍</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">No Approved Items Yet</div>
+      <div style="font-size:13px;color:var(--text-secondary);max-width:440px;margin:0 auto 16px;">
+        To approve action items, switch to the <strong>Pending Approval</strong> tab, select products, and click "✅ Approve". They will immediately be listed here!
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" onclick="switchQATab('pending')">
+        ← Review Pending Items ({{ summary.status_counts.pending }})
+      </button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 3: REJECTED ITEMS LIST -->
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+{% set rejected_issues = summary.issues|selectattr('status', 'equalto', 'rejected')|list %}
+<div id="pane-rejected" class="qa-tab-pane" style="display:none;">
+  <div class="card">
+    <div class="card-header flex items-center justify-between" style="padding:16px 20px;border-bottom:1px solid var(--border);">
+      <div>
+        <span class="card-title" style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
+          ❌ Rejected Items ({{ rejected_issues|length }})
+        </span>
+        <div class="card-subtitle">These recommendations were rejected during review.</div>
+      </div>
+    </div>
+
+    {% if rejected_issues %}
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Product Name</th>
+            <th>Product URL</th>
+            <th>Issue</th>
+            <th>Current Value</th>
+            <th>Rejected Suggested Fix</th>
+            <th>Status</th>
+            <th style="text-align:right;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for issue in rejected_issues %}
+          <tr class="qa-item-row" data-search="{{ issue.product_name|lower }} {{ issue.url|lower }} {{ issue.issue_type|lower }}">
+            <td style="font-weight:700;">{{ issue.product_name }}</td>
+            <td>
+              <a href="{{ issue.url }}" target="_blank" rel="noopener" style="font-size:12px;color:var(--primary);text-decoration:underline;">
+                {{ issue.url[:45] }}... ↗
+              </a>
+            </td>
+            <td><span class="badge badge-danger">{{ issue.issue_type }}</span></td>
+            <td style="max-width:160px;font-size:12px;">{{ issue.current_value }}</td>
+            <td style="max-width:240px;font-size:12px;color:var(--text-tertiary);">{{ issue.suggested_value }}</td>
+            <td><span class="badge badge-secondary">Rejected</span></td>
+            <td style="text-align:right;">
+              <form method="POST" action="{{ url_for('approve_qa', issue_id=issue.id) }}" style="display:inline;">
+                <input type="hidden" name="action" value="reset">
+                <button type="submit" class="btn btn-ghost btn-sm" title="Revert to pending" style="color:var(--primary);font-size:11px;">↩ Re-evaluate</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:40px 20px;">
+      <div style="font-size:36px;margin-bottom:8px;">✨</div>
+      <div style="font-weight:700;font-size:15px;color:var(--text-primary);margin-bottom:4px;">No Rejected Items</div>
+      <div style="font-size:13px;color:var(--text-secondary);">No recommendations have been marked as rejected.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<!-- TAB 4: ALL ISSUES TABLE -->
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<div id="pane-all" class="qa-tab-pane" style="display:none;">
+  <div class="card">
+    <div class="card-header flex items-center justify-between" style="padding:16px 20px;border-bottom:1px solid var(--border);">
+      <span class="card-title" style="font-size:16px;font-weight:700;">📋 Complete Product QA Issues Directory ({{ summary.total_issues }})</span>
+    </div>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px;">#</th>
+            <th>Product Name</th>
+            <th>URL</th>
+            <th>Issue Category</th>
+            <th>Status</th>
+            <th>Current Value</th>
+            <th>AI Suggested Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for issue in summary.issues %}
+          <tr class="qa-item-row" data-search="{{ issue.product_name|lower }} {{ issue.url|lower }} {{ issue.issue_type|lower }}">
+            <td style="font-size:11px;color:var(--text-tertiary);">{{ loop.index }}</td>
+            <td style="font-weight:600;">{{ issue.product_name }}</td>
+            <td>
+              <a href="{{ issue.url }}" target="_blank" rel="noopener" style="font-size:11px;font-family:'SF Mono',monospace;color:var(--primary);text-decoration:underline;">
+                {{ issue.url[:40] }}... ↗
+              </a>
+            </td>
+            <td><span class="badge badge-secondary" style="font-size:11px;">{{ issue.issue_type }}</span></td>
+            <td>
+              {% if issue.status == 'approved' %}
+              <span class="badge badge-success">✓ Approved</span>
+              {% elif issue.status == 'rejected' %}
+              <span class="badge badge-danger">✕ Rejected</span>
+              {% else %}
+              <span class="badge badge-warning">⏳ Pending</span>
+              {% endif %}
+            </td>
+            <td style="max-width:180px;font-size:11px;color:var(--text-secondary);">{{ issue.current_value }}</td>
+            <td style="max-width:240px;font-size:11px;color:var(--text-primary);">{{ issue.suggested_value }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  function switchQATab(tabName) {
+    // Hide all tab panes
+    document.querySelectorAll('.qa-tab-pane').forEach(function(pane) {
+      pane.style.display = 'none';
+    });
+
+    // Reset all tab buttons
+    document.querySelectorAll('.qa-tab-btn').forEach(function(btn) {
+      btn.style.background = 'transparent';
+      btn.style.color = 'var(--text-secondary)';
+      btn.style.borderColor = 'var(--border)';
+    });
+
+    // Show target pane
+    var targetPane = document.getElementById('pane-' + tabName);
+    if (targetPane) {
+      targetPane.style.display = 'block';
+    }
+
+    // Highlight active button
+    var activeBtn = document.getElementById('btn-tab-' + tabName);
+    if (activeBtn) {
+      if (tabName === 'approved') {
+        activeBtn.style.background = 'var(--success)';
+        activeBtn.style.color = 'white';
+        activeBtn.style.borderColor = 'var(--success)';
+      } else if (tabName === 'rejected') {
+        activeBtn.style.background = 'var(--danger)';
+        activeBtn.style.color = 'white';
+        activeBtn.style.borderColor = 'var(--danger)';
+      } else {
+        activeBtn.style.background = 'var(--primary)';
+        activeBtn.style.color = 'white';
+        activeBtn.style.borderColor = 'var(--primary)';
+      }
+    }
+
+    // Update query string in browser without reload
+    try {
+      var url = new URL(window.location);
+      url.searchParams.set('tab', tabName);
+      window.history.replaceState({}, '', url);
+    } catch(e) {}
+  }
+
+  function filterQAItems(query) {
+    var q = query.trim().toLowerCase();
+    document.querySelectorAll('.qa-item-row').forEach(function(row) {
+      var haystack = row.getAttribute('data-search') || row.innerText.toLowerCase();
+      if (!q || haystack.indexOf(q) !== -1) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  }
+
+  // Initial load: check query string or auto-open approved tab if requested
+  document.addEventListener('DOMContentLoaded', function() {
+    var params = new URLSearchParams(window.location.search);
+    var initialTab = params.get('tab');
+    if (initialTab && ['pending', 'approved', 'rejected', 'all'].includes(initialTab)) {
+      switchQATab(initialTab);
+    } else {
+      // Default to pending, unless there are 0 pending items and approved items exist
+      var pendingCount = parseInt("{{ summary.status_counts.pending }}") || 0;
+      var approvedCount = parseInt("{{ summary.status_counts.approved }}") || 0;
+      if (pendingCount === 0 && approvedCount > 0) {
+        switchQATab('approved');
+      } else {
+        switchQATab('pending');
+      }
+    }
+  });
+</script>
 
 {% else %}
 <div class="empty-state">
